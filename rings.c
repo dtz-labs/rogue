@@ -183,11 +183,37 @@ ring_eat(int hand)
  * ring_num:
  *	Print ring bonuses
  */
+#ifdef ZX128
+void
+zx_ring_num_to(THING *obj, char *target)
+{
+    if (!(obj->o_flags & ISKNOW))
+    {
+	target[0] = '\0';
+	return;
+    }
+    switch (obj->o_which)
+    {
+	case R_PROTECT:
+	case R_ADDSTR:
+	case R_ADDDAM:
+	case R_ADDHIT:
+	    sprintf(target, obj->o_arm < 0 ? " [%d]" : " [+%d]", obj->o_arm);
+	    break;
+	default:
+	    target[0] = '\0';
+    }
+}
+#endif
+
 char *
 ring_num(THING *obj)
 {
     static char buf[10];
 
+#ifdef ZX128
+    zx_ring_num_to(obj, buf);
+#else
     if (!(obj->o_flags & ISKNOW))
 	return "";
     switch (obj->o_which)
@@ -200,5 +226,6 @@ ring_num(THING *obj)
 	otherwise:
 	    return "";
     }
+#endif
     return buf;
 }

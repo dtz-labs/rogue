@@ -725,6 +725,11 @@ void	wield() ZX_BANKED_4;
 
 #ifdef ZX128
 void zx_update_viewport(void) ZX_BANKED_6;
+void zx_copy_bank3_string(char *target, const char *source,
+	unsigned char size) ZX_BANKED_3;
+void zx_charge_str_to(THING *obj, char *target) ZX_BANKED_4;
+void zx_num_to(char *target, int n1, int n2, char type) ZX_BANKED_4;
+void zx_ring_num_to(THING *obj, char *target) ZX_BANKED_0;
 void zx_cb_runners(int arg);
 void zx_cb_doctor(int arg);
 void zx_cb_swander(int arg);
@@ -796,7 +801,7 @@ int	trip_ch(int y, int x, int ch);
 coord	*find_dest(THING *tp);
 coord	*rndmove(THING *who) ZX_BANKED_0;
 
-THING	*find_obj(int y, int x);
+THING	*find_obj(int y, int x) ZX_BANKED_3;
 THING	*get_item(char *purpose, int type);
 THING	*leave_pack(THING *obj, bool newobj, bool all) ZX_BANKED_1;
 THING	*new_item() ZX_BANKED_7;

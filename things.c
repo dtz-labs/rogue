@@ -16,6 +16,27 @@
 #include <ctype.h>
 #include "rogue.h"
 
+#ifdef ZX128
+static char *
+item_vowelstr(char *str)
+{
+    switch (*str)
+    {
+	case 'a': case 'A':
+	case 'e': case 'E':
+	case 'i': case 'I':
+	case 'o': case 'O':
+	case 'u': case 'U':
+	    return "n";
+	default:
+	    return "";
+    }
+}
+#define ITEM_VOWELSTR(str) item_vowelstr(str)
+#else
+#define ITEM_VOWELSTR(str) vowelstr(str)
+#endif
+
 /*
  * inv_name:
  *	Return the name of something as it would appear in an
@@ -28,17 +49,38 @@ inv_name(THING *obj, bool drop)
     struct obj_info *op;
     char *sp;
     int which;
+#ifdef ZX128
+    char appearance[16];
+    char stick_type[8];
+    char number[10];
+#endif
 
     pb = prbuf;
     which = obj->o_which;
     switch (obj->o_type)
     {
-        case POTION:
+	case POTION:
+#ifdef ZX128
+	    zx_copy_bank3_string(appearance, p_colors[which], sizeof appearance);
+	    nameit(obj, "potion", appearance, &pot_info[which], NULL);
+#else
 	    nameit(obj, "potion", p_colors[which], &pot_info[which], nullstr);
+#endif
 	when RING:
+#ifdef ZX128
+	    zx_copy_bank3_string(appearance, r_stones[which], sizeof appearance);
+	    nameit(obj, "ring", appearance, &ring_info[which], NULL);
+#else
 	    nameit(obj, "ring", r_stones[which], &ring_info[which], ring_num);
+#endif
 	when STICK:
+#ifdef ZX128
+	    zx_copy_bank3_string(stick_type, ws_type[which], sizeof stick_type);
+	    zx_copy_bank3_string(appearance, ws_made[which], sizeof appearance);
+	    nameit(obj, stick_type, appearance, &ws_info[which], NULL);
+#else
 	    nameit(obj, ws_type[which], ws_made[which], &ws_info[which], charge_str);
+#endif
 	when SCROLL:
 	    if (obj->o_count == 1)
 	    {
@@ -60,7 +102,7 @@ inv_name(THING *obj, bool drop)
 	when FOOD:
 	    if (which == 1)
 		if (obj->o_count == 1)
-		    sprintf(pb, "A%s %s", vowelstr(fruit), fruit);
+		    sprintf(pb, "A%s %s", ITEM_VOWELSTR(fruit), fruit);
 		else
 		    sprintf(pb, "%d %ss", obj->o_count, fruit);
 	    else
@@ -73,10 +115,17 @@ inv_name(THING *obj, bool drop)
 	    if (obj->o_count > 1)
 		sprintf(pb, "%d ", obj->o_count);
 	    else
-		sprintf(pb, "A%s ", vowelstr(sp));
+		sprintf(pb, "A%s ", ITEM_VOWELSTR(sp));
 	    pb = &prbuf[strlen(prbuf)];
 	    if (obj->o_flags & ISKNOW)
+#ifdef ZX128
+	    {
+		zx_num_to(number, obj->o_hplus, obj->o_dplus, WEAPON);
+		sprintf(pb, "%s %s", number, sp);
+	    }
+#else
 		sprintf(pb, "%s %s", num(obj->o_hplus,obj->o_dplus,WEAPON), sp);
+#endif
 	    else
 		sprintf(pb, "%s", sp);
 	    if (obj->o_count > 1)
@@ -90,8 +139,13 @@ inv_name(THING *obj, bool drop)
 	    sp = arm_info[which].oi_name;
 	    if (obj->o_flags & ISKNOW)
 	    {
+#ifdef ZX128
+		zx_num_to(number, a_class[which] - obj->o_arm, 0, ARMOR);
+		sprintf(pb, "%s %s [", number, sp);
+#else
 		sprintf(pb, "%s %s [",
 		    num(a_class[which] - obj->o_arm, 0, ARMOR), sp);
+#endif
 		if (!terse)
 		    strcat(pb, "protection ");
 		pb = &prbuf[strlen(prbuf)];
@@ -404,7 +458,11 @@ print_disc(char type)
 {
     struct obj_info *info = NULL;
     int i, maxnum = 0, num_found;
+#ifdef ZX128
+    THING obj;
+#else
     static THING obj;
+#endif
     static int order[MAX4(MAXSCROLLS, MAXPOTIONS, MAXRINGS, MAXSTICKS)];
 
     switch (type)
@@ -619,6 +677,19 @@ nameit(THING *obj, char *type, char *which, struct obj_info *op,
     char *(*prfunc)(THING *))
 {
     char *pb;
+#ifdef ZX128
+    char suffix[20];
+
+    (void)prfunc;
+    suffix[0] = '\0';
+    if (op->oi_know || op->oi_guess)
+    {
+	if (obj->o_type == RING)
+	    zx_ring_num_to(obj, suffix);
+	else if (obj->o_type == STICK)
+	    zx_charge_str_to(obj, suffix);
+    }
+#endif
 
     if (op->oi_know || op->oi_guess)
     {
@@ -628,12 +699,20 @@ nameit(THING *obj, char *type, char *which, struct obj_info *op,
 	    sprintf(prbuf, "%d %ss ", obj->o_count, type);
 	pb = &prbuf[strlen(prbuf)];
 	if (op->oi_know)
+#ifdef ZX128
+	    sprintf(pb, "of %s%s(%s)", op->oi_name, suffix, which);
+#else
 	    sprintf(pb, "of %s%s(%s)", op->oi_name, (*prfunc)(obj), which);
+#endif
 	else if (op->oi_guess)
+#ifdef ZX128
+	    sprintf(pb, "called %s%s(%s)", op->oi_guess, suffix, which);
+#else
 	    sprintf(pb, "called %s%s(%s)", op->oi_guess, (*prfunc)(obj), which);
+#endif
     }
     else if (obj->o_count == 1)
-	sprintf(prbuf, "A%s %s %s", vowelstr(which), which, type);
+	sprintf(prbuf, "A%s %s %s", ITEM_VOWELSTR(which), which, type);
     else
 	sprintf(prbuf, "%d %s %ss", obj->o_count, which, type);
 }

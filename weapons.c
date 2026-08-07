@@ -212,14 +212,28 @@ hit_monster(int y, int x, THING *obj)
  * num:
  *	Figure out the plus number for armor/weapons
  */
+#ifdef ZX128
+void
+zx_num_to(char *target, int n1, int n2, char type)
+{
+    sprintf(target, n1 < 0 ? "%d" : "+%d", n1);
+    if (type == WEAPON)
+	sprintf(&target[strlen(target)], n2 < 0 ? ",%d" : ",+%d", n2);
+}
+#endif
+
 char *
 num(int n1, int n2, char type)
 {
     static char numbuf[10];
 
+#ifdef ZX128
+    zx_num_to(numbuf, n1, n2, type);
+#else
     sprintf(numbuf, n1 < 0 ? "%d" : "+%d", n1);
     if (type == WEAPON)
 	sprintf(&numbuf[strlen(numbuf)], n2 < 0 ? ",%d" : ",+%d", n2);
+#endif
     return numbuf;
 }
 

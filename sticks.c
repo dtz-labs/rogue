@@ -429,16 +429,33 @@ def:
  * charge_str:
  *	Return an appropriate string for a wand charge
  */
+#ifdef ZX128
+void
+zx_charge_str_to(THING *obj, char *target)
+{
+    if (!(obj->o_flags & ISKNOW))
+	target[0] = '\0';
+    else if (terse)
+	sprintf(target, " [%d]", obj->o_charges);
+    else
+	sprintf(target, " [%d charges]", obj->o_charges);
+}
+#endif
+
 char *
 charge_str(THING *obj)
 {
     static char buf[20];
 
+#ifdef ZX128
+    zx_charge_str_to(obj, buf);
+#else
     if (!(obj->o_flags & ISKNOW))
 	buf[0] = '\0';
     else if (terse)
 	sprintf(buf, " [%d]", obj->o_charges);
     else
 	sprintf(buf, " [%d charges]", obj->o_charges);
+#endif
     return buf;
 }

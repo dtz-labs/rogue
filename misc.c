@@ -433,6 +433,19 @@ vowelstr(char *str)
     }
 }
 
+#ifdef ZX128
+/* Copy a string whose address belongs to bank 3 into fixed/stack memory. */
+void
+zx_copy_bank3_string(char *target, const char *source, unsigned char size)
+{
+    if (size == 0)
+	return;
+    while (--size != 0 && *source != '\0')
+	*target++ = *source++;
+    *target = '\0';
+}
+#endif
+
 /* 
  * is_current:
  *	See if the object is one of the currently used items

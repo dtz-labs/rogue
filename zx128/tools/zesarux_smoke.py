@@ -16,6 +16,14 @@ PROMPT = b"command> "
 SYMBOL_RE = re.compile(r"^(\S+)\s*=\s*\$([0-9A-Fa-f]+)\b", re.MULTILINE)
 THING_POSITION_OFFSET = 4
 THING_ROOM_OFFSET = 43
+OBJECT_TYPE_OFFSET = 4
+OBJECT_POSITION_OFFSET = 6
+OBJECT_COUNT_OFFSET = 31
+OBJECT_WHICH_OFFSET = 33
+OBJECT_GOLD_VALUE_OFFSET = 39
+OBJECT_FLAGS_OFFSET = 41
+OBJECT_GROUP_OFFSET = 43
+OBJECT_LABEL_OFFSET = 45
 
 
 def parse_args() -> argparse.Namespace:
@@ -143,6 +151,20 @@ def wait_for_byte_change(
     raise RuntimeError(f"{label} remained at 0x{last:02X}")
 
 
+def wait_for_word(
+    sock: socket.socket, address: int, expected: int, timeout: float, label: str
+) -> None:
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = read_word(sock, address)
+        if last == expected:
+            return
+        time.sleep(0.05)
+    shown = "unread" if last is None else f"0x{last:04X}"
+    raise RuntimeError(f"{label} did not reach 0x{expected:04X}; last value was {shown}")
+
+
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
     deadline = time.monotonic() + timeout
@@ -164,6 +186,18 @@ def wait_for_ocr(sock: socket.socket, needles: tuple[str, ...], timeout: float) 
             return last
         time.sleep(0.1)
     raise RuntimeError(f"OCR did not contain {needles!r}: {last!r}")
+
+
+def wait_for_compact_ocr(sock: socket.socket, needle: str, timeout: float) -> str:
+    """Match text even when the 32-column renderer splits a word across rows."""
+    deadline = time.monotonic() + timeout
+    last = ""
+    while time.monotonic() < deadline:
+        last = command(sock, "get-ocr")
+        if needle in "".join(last.split()):
+            return last
+        time.sleep(0.1)
+    raise RuntimeError(f"compact OCR did not contain {needle!r}: {last!r}")
 
 
 def validate_screenshot(path: Path) -> None:
@@ -195,6 +229,9 @@ def main() -> int:
     movement_scratch = required_symbol(symbols, "nh")
     random_move_scratch = required_symbol(symbols, "rndmove_ret")
     monster_list = required_symbol(symbols, "mlist")
+    level_objects = required_symbol(symbols, "lvl_obj")
+    purse = required_symbol(symbols, "purse")
+    playing = required_symbol(symbols, "playing")
     passages = required_symbol(symbols, "passages")
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
@@ -211,6 +248,9 @@ def main() -> int:
         ("movement scratch", movement_scratch),
         ("random-move scratch", random_move_scratch),
         ("monster-list head", monster_list),
+        ("level-object list head", level_objects),
+        ("gold purse", purse),
+        ("playing flag", playing),
         ("passage table", passages),
         ("player position", player_position),
     ):
@@ -282,6 +322,99 @@ def main() -> int:
             raise RuntimeError("could not detach initial monsters")
         print("PASS detached initial monsters for wanderer regression")
 
+        # Exercise the bank-1 pickup path against find_obj() in bank 3.  A
+        # missing banked-call annotation used to jump into unrelated bank-1
+        # code here and return the program to BASIC as soon as an item was
+        # collected.  Reuse a generated object and place it under the hero so
+        # the repeat command can invoke the ordinary pickup implementation.
+        gold = read_word(sock, level_objects)
+        if not gold or gold >= 0xC000:
+            raise RuntimeError(f"level object has invalid address: 0x{gold:04X}")
+        next_object = read_word(sock, gold)
+        hero_x, hero_y = read_coord(sock, player_position)
+        write_bytes(sock, gold + OBJECT_TYPE_OFFSET, ord("*"), 0)
+        write_bytes(
+            sock,
+            gold + OBJECT_POSITION_OFFSET,
+            hero_x,
+            hero_x >> 8,
+            hero_y,
+            hero_y >> 8,
+        )
+        gold_value = 37
+        write_bytes(sock, gold + OBJECT_GOLD_VALUE_OFFSET, gold_value, 0)
+        before_pickup = read_byte(sock, turn_count)
+        write_bytes(sock, last_comm, ord(","))
+        send_physical_key(sock, ord("a"))
+        wait_for_word(sock, purse, gold_value, args.timeout, "gold pickup purse")
+        wait_for_word(
+            sock, level_objects, next_object, args.timeout, "gold pickup object removal"
+        )
+        wait_for_ocr(sock, ("gold pieces",), args.timeout)
+        if read_byte(sock, playing) != 1:
+            raise RuntimeError("gold pickup stopped the game loop")
+        wait_for_byte_change(
+            sock, turn_count, before_pickup, args.timeout, "gold pickup command"
+        )
+        time.sleep(0.3)
+        command(sock, "send-keys-ascii 200 118")
+        wait_for_byte(sock, last_comm, ord("v"), args.timeout, "post-pickup command")
+        wait_for_ocr(sock, ("Version",), args.timeout)
+        if read_byte(sock, playing) != 1:
+            raise RuntimeError("game loop stopped after the command following pickup")
+        print("PASS gold pickup returns from bank 3 and accepts the next command")
+
+        # Reuse the next floor object as an unidentified potion.  Potion names
+        # are selected in bank 3 but rendered by inv_name() in bank 1, so this
+        # catches both an unbanked helper call and stale pointers into bank 3.
+        potion = read_word(sock, level_objects)
+        if not potion or potion >= 0xC000:
+            raise RuntimeError(f"level object has invalid address: 0x{potion:04X}")
+        next_object = read_word(sock, potion)
+        write_bytes(sock, potion + OBJECT_TYPE_OFFSET, ord("!"), 0)
+        write_bytes(
+            sock,
+            potion + OBJECT_POSITION_OFFSET,
+            hero_x,
+            hero_x >> 8,
+            hero_y,
+            hero_y >> 8,
+        )
+        write_bytes(sock, potion + OBJECT_COUNT_OFFSET, 1, 0)
+        write_bytes(sock, potion + OBJECT_WHICH_OFFSET, 0, 0)
+        write_bytes(sock, potion + OBJECT_FLAGS_OFFSET, 0, 0)
+        write_bytes(sock, potion + OBJECT_GROUP_OFFSET, 0, 0)
+        write_bytes(sock, potion + OBJECT_LABEL_OFFSET, 0, 0)
+        before_pickup = read_byte(sock, turn_count)
+        write_bytes(sock, last_comm, ord(","))
+        send_physical_key(sock, ord("a"))
+        wait_for_word(
+            sock, level_objects, next_object, args.timeout, "potion pickup object removal"
+        )
+        wait_for_compact_ocr(sock, "potion", args.timeout)
+        wait_for_byte_change(
+            sock, turn_count, before_pickup, args.timeout, "potion pickup command"
+        )
+        if read_byte(sock, playing) != 1 or read_byte(sock, boot_stage) != 0x52:
+            raise RuntimeError("potion pickup reset or stopped the game")
+
+        # Match the reported sequence exactly: collect '!', then press S.
+        time.sleep(0.3)
+        command(sock, "send-keys-ascii 200 83")
+        wait_for_byte(sock, last_comm, ord("S"), args.timeout, "save command")
+        wait_for_ocr(
+            sock,
+            ("Saving is not available in this", "build."),
+            args.timeout,
+        )
+        if read_byte(sock, playing) != 1 or read_byte(sock, boot_stage) != 0x52:
+            raise RuntimeError("save command after potion pickup reset or stopped the game")
+        time.sleep(0.3)
+        send_physical_key(sock, ord("v"))
+        wait_for_byte(sock, last_comm, ord("v"), args.timeout, "post-save command")
+        wait_for_ocr(sock, ("Version",), args.timeout)
+        print("PASS potion pickup and following S command stay in the game")
+
         if read_byte(sock, refresh_count) == 0:
             wait_for_byte_change(
                 sock, refresh_count, 0, args.timeout, "initial screen refresh"
@@ -298,6 +431,7 @@ def main() -> int:
         # four-column corridor dead-zone.
         write_bytes(sock, player_room, passages & 0xFF, passages >> 8)
         write_bytes(sock, viewport_first_col, 32)
+        write_bytes(sock, last_comm, 0)
         command(sock, "send-keys-ascii 200 118")
         wait_for_byte(
             sock, last_comm, ord("v"), args.timeout, "viewport test command"
