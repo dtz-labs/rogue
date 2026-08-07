@@ -1,0 +1,118 @@
+name: ZX128 build and smoke
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zx128-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  Z88DK_IMAGE: z88dk/z88dk:20251006@sha256:614d0e79ed3bcf56e935806872156b5cf11b2f70843edd18b2bc2a7de9905a79
+  ZESARUX_VERSION: "13.0"
+  ZESARUX_URL: https://github.com/chernandezba/zesarux/releases/download/ZEsarUX-13.0/ZEsarUX_linux-13.0-ubuntu24_x86_64.tar.gz
+  ZESARUX_SHA256: 596388df21388fd6c485dab23f7d157ef5b1753f872e63ed77574c9e8c642d55
+
+jobs:
+  build:
+    name: Build and check layout
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build TAP with pinned z88dk
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "$GITHUB_WORKSPACE:/src" \
+            "$Z88DK_IMAGE" \
+            make -C zx128 build JOBS=2
+
+      - name: Check fixed and banked memory layout
+        run: |
+          python3 zx128/tools/check_layout.py \
+            --map zx128/build/rogue-zx128.map \
+            --main-bin zx128/build/rogue-zx128.bin \
+            --stack-reserve 3072 \
+            --heap-reserve 3072
+
+      - name: Upload TAP and linker outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: zx128-build
+          path: |
+            zx128/build/rogue-zx128.tap
+            zx128/build/rogue-zx128.map
+            zx128/build/rogue-zx128.bin
+            zx128/build/rogue-zx128_BANK_*.bin
+          if-no-files-found: error
+          retention-days: 14
+
+  smoke:
+    name: ZEsarUX smoke
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download ZX128 build
+        uses: actions/download-artifact@v8
+        with:
+          name: zx128-build
+          path: zx128/build
+
+      - name: Install ZEsarUX runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libasound2t64 \
+            libncurses6 \
+            libpulse0 \
+            libsdl1.2debian \
+            libsndfile1 \
+            libssl3t64 \
+            libtinfo6 \
+            libx11-6 \
+            libxext6
+
+      - name: Download pinned ZEsarUX
+        id: zesarux
+        run: |
+          archive="$RUNNER_TEMP/zesarux-$ZESARUX_VERSION.tar.gz"
+          emulator_root="$RUNNER_TEMP/zesarux"
+          emulator_dir="$emulator_root/ZEsarUX-$ZESARUX_VERSION"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$archive" "$ZESARUX_URL"
+          echo "$ZESARUX_SHA256  $archive" | sha256sum --check --strict
+          mkdir -p "$emulator_root"
+          tar -xzf "$archive" -C "$emulator_root"
+          ldd "$emulator_dir/zesarux"
+          echo "directory=$emulator_dir" >> "$GITHUB_OUTPUT"
+          echo "binary=$emulator_dir/zesarux" >> "$GITHUB_OUTPUT"
+
+      - name: Boot and test in ZEsarUX
+        run: |
+          cd "${{ steps.zesarux.outputs.directory }}"
+          python3 "$GITHUB_WORKSPACE/zx128/tools/zesarux_smoke.py" \
+            --zesarux "${{ steps.zesarux.outputs.binary }}" \
+            --tap "$GITHUB_WORKSPACE/zx128/build/rogue-zx128.tap" \
+            --map "$GITHUB_WORKSPACE/zx128/build/rogue-zx128.map" \
+            --screenshot "$GITHUB_WORKSPACE/zx128/build/rogue-zx128-smoke.pbm"
+
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zx128-smoke
+          path: zx128/build/rogue-zx128-smoke.pbm
+          if-no-files-found: ignore
+          retention-days: 14
