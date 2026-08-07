@@ -243,7 +243,12 @@ int werase(WINDOW *win)
 }
 
 int erase(void) { return werase(stdscr); }
-int clear(void) { return erase(); }
+int clear(void)
+{
+    /* A full-screen redraw starts a new view, not the old dungeon viewport. */
+    physical_first_col = ZX_NO_VIEWPORT;
+    return erase();
+}
 int wclear(WINDOW *win) { return werase(win); }
 
 int wclrtoeol(WINDOW *win)
