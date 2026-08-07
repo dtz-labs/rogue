@@ -81,6 +81,7 @@ def send_physical_key(sock: socket.socket, key: int) -> None:
     command(sock, f"send-keys-event {key} 1")
     time.sleep(0.25)
     command(sock, f"send-keys-event {key} 0")
+    time.sleep(0.1)
 
 
 def connect(proc: subprocess.Popen[bytes], port: int, timeout: float) -> socket.socket:
@@ -163,6 +164,32 @@ def wait_for_word(
         time.sleep(0.05)
     shown = "unread" if last is None else f"0x{last:04X}"
     raise RuntimeError(f"{label} did not reach 0x{expected:04X}; last value was {shown}")
+
+
+def send_physical_key_until_word(
+    sock: socket.socket,
+    key: int,
+    address: int,
+    expected: int,
+    timeout: float,
+    label: str,
+) -> None:
+    """Retry a dropped emulator key only while its state change is still pending."""
+    deadline = time.monotonic() + timeout
+    last = read_word(sock, address)
+    while time.monotonic() < deadline:
+        if last == expected:
+            return
+        send_physical_key(sock, key)
+        attempt_deadline = min(deadline, time.monotonic() + 2.0)
+        while time.monotonic() < attempt_deadline:
+            last = read_word(sock, address)
+            if last == expected:
+                return
+            time.sleep(0.05)
+    raise RuntimeError(
+        f"{label} did not reach 0x{expected:04X}; last value was 0x{last:04X}"
+    )
 
 
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
@@ -345,7 +372,14 @@ def main() -> int:
         write_bytes(sock, gold + OBJECT_GOLD_VALUE_OFFSET, gold_value, 0)
         before_pickup = read_byte(sock, turn_count)
         write_bytes(sock, last_comm, ord(","))
-        send_physical_key(sock, ord("a"))
+        send_physical_key_until_word(
+            sock,
+            ord("a"),
+            purse,
+            gold_value,
+            args.timeout,
+            "gold pickup purse",
+        )
         wait_for_word(sock, purse, gold_value, args.timeout, "gold pickup purse")
         wait_for_word(
             sock, level_objects, next_object, args.timeout, "gold pickup object removal"
@@ -387,7 +421,14 @@ def main() -> int:
         write_bytes(sock, potion + OBJECT_LABEL_OFFSET, 0, 0)
         before_pickup = read_byte(sock, turn_count)
         write_bytes(sock, last_comm, ord(","))
-        send_physical_key(sock, ord("a"))
+        send_physical_key_until_word(
+            sock,
+            ord("a"),
+            level_objects,
+            next_object,
+            args.timeout,
+            "potion pickup object removal",
+        )
         wait_for_word(
             sock, level_objects, next_object, args.timeout, "potion pickup object removal"
         )
