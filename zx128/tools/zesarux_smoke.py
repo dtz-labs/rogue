@@ -142,6 +142,36 @@ def wait_for_byte_change(
     raise RuntimeError(f"{label} remained at 0x{last:02X}")
 
 
+def send_turn_key(
+    sock: socket.socket,
+    key: int,
+    turn_count: int,
+    refresh_turn: int,
+    before: int,
+    timeout: float,
+    label: str,
+) -> int:
+    expected = (before + 1) & 0xFF
+    for attempt in range(3):
+        send_physical_key(sock, key)
+        try:
+            observed = wait_for_byte_change(
+                sock, turn_count, before, min(timeout, 1.0), label
+            )
+        except RuntimeError:
+            if attempt == 2:
+                raise
+            continue
+        if observed != expected:
+            raise RuntimeError(
+                f"{label} advanced from 0x{before:02X} to 0x{observed:02X}, "
+                "expected exactly one turn"
+            )
+        wait_for_byte(sock, refresh_turn, expected, timeout, f"{label} refresh")
+        return expected
+    raise RuntimeError(f"{label} key was not observed")
+
+
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
     deadline = time.monotonic() + timeout
@@ -378,10 +408,15 @@ def main() -> int:
         # release is observed, then verify the camera jumps by eight columns.
         for expected_x in range(after_position[0] - 1, 51, -1):
             before = read_byte(sock, turn_count)
-            send_physical_key(sock, 104)
-            after = (before + 1) & 0xFF
-            wait_for_byte(sock, turn_count, after, args.timeout, "corridor walk turn")
-            wait_for_byte(sock, refresh_turn, after, args.timeout, "corridor walk refresh")
+            send_turn_key(
+                sock,
+                104,
+                turn_count,
+                refresh_turn,
+                before,
+                args.timeout,
+                "corridor walk turn",
+            )
             position = read_coord(sock, player_position)
             if position[0] != expected_x:
                 raise RuntimeError(
@@ -391,10 +426,15 @@ def main() -> int:
             raise RuntimeError("viewport moved before the corridor dead-zone")
 
         before = read_byte(sock, turn_count)
-        send_physical_key(sock, 104)
-        after = (before + 1) & 0xFF
-        wait_for_byte(sock, turn_count, after, args.timeout, "viewport-step turn")
-        wait_for_byte(sock, refresh_turn, after, args.timeout, "viewport-step refresh")
+        send_turn_key(
+            sock,
+            104,
+            turn_count,
+            refresh_turn,
+            before,
+            args.timeout,
+            "viewport-step turn",
+        )
         corridor_position = read_coord(sock, player_position)
         if corridor_position != (51, after_position[1]):
             raise RuntimeError(f"corridor step reached {corridor_position}, expected x=51")
