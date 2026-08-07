@@ -443,5 +443,16 @@ badcheck(char *name, struct obj_info *info, int bound)
 char *
 pick_color(char *col)
 {
+#ifdef ZX128
+    /* col belongs to the caller and stays readable there, but rainbow[] lives
+       in this bank. Callers run in banks 4 and 6 and would print the random
+       name with bank 3 paged out, so hand them a resident copy instead. */
+    if (!on(player, ISHALU))
+	return col;
+    strncpy(zx_color_name, rainbow[rnd(NCOLORS)], ZX_COLOR_NAME_MAX - 1);
+    zx_color_name[ZX_COLOR_NAME_MAX - 1] = '\0';
+    return zx_color_name;
+#else
     return (on(player, ISHALU) ? rainbow[rnd(NCOLORS)] : col);
+#endif
 }

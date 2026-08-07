@@ -121,6 +121,9 @@ int roll(int number, int sides)
 
 static char zx_item_purpose[ZX_PURPOSE_MAX];
 
+/* Filled by pick_color() in bank 3 and read by callers in other banks. */
+char zx_color_name[ZX_COLOR_NAME_MAX];
+
 THING *get_item(char *purpose, int type)
 {
     strncpy(zx_item_purpose, purpose, sizeof zx_item_purpose - 1);
