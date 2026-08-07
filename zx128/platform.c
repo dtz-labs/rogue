@@ -42,6 +42,10 @@ int main(void)
     seed = 0x13579bdfL;
 
     initscr();
+    /* The loader leaves whatever border the ROM last set; the dungeon reads
+       as one surface only when the border matches the black screen. Cold
+       restart re-enters at the CRT, so main() repaints it every time. */
+    zx_border(INK_BLACK);
     zx_seed_collecting = TRUE;
     zx_startup_help();
     named_hero = zx_startup_name();
@@ -103,6 +107,25 @@ int roll(int number, int sides)
     while (number--)
         total += rnd(sides) + 1;
     return total;
+}
+
+/*
+ * Every caller passes a string literal that lives in its own bank's RODATA,
+ * but get_item's body is in bank 1: paging it in replaces the caller's page
+ * under that pointer, so the prompt printed garbage. This shim stays in fixed
+ * memory, where no paging has happened yet and the literal is still readable,
+ * and hands the banked half a copy that every bank can see.
+ */
+/* Sized for the longest purpose in use, "zap with" and "identify". */
+#define ZX_PURPOSE_MAX 10
+
+static char zx_item_purpose[ZX_PURPOSE_MAX];
+
+THING *get_item(char *purpose, int type)
+{
+    strncpy(zx_item_purpose, purpose, sizeof zx_item_purpose - 1);
+    zx_item_purpose[sizeof zx_item_purpose - 1] = '\0';
+    return zx_get_item_banked(zx_item_purpose, type);
 }
 
 void playit(void)
