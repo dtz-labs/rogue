@@ -133,8 +133,7 @@ $(TAP): $(OBJS)
 	@test -f "$@" || { echo "z88dk did not create expected TAP: $@" >&2; exit 1; }
 
 check-banked-objects: build
-	$(ZCC_ENV) python3 tools/check_banked_objects.py \
-		--nm z88dk-z80nm --build-dir $(BUILD)
+	$(ZCC_ENV) sh tools/check_banked_objects.sh z88dk-z80nm $(BUILD)
 
 layout: check-banked-objects
 	python3 tools/check_layout.py --map $(MAP) --main-bin $(MAIN_BIN) \

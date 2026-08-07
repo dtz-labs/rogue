@@ -33,7 +33,7 @@ jobs:
             --user "$(id -u):$(id -g)" \
             --volume "$GITHUB_WORKSPACE:/src" \
             "$Z88DK_IMAGE" \
-            make -C zx128 layout JOBS=2
+            make -C zx128 check-banked-objects JOBS=2
 
       - name: Check fixed and banked memory layout
         run: |
