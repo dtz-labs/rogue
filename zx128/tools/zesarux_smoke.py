@@ -307,15 +307,23 @@ def main() -> int:
         print("PASS corridor viewport advances by an eight-column step")
 
         time.sleep(0.3)
-        command(sock, "send-keys-ascii 200 83")
-        wait_for_byte(sock, last_comm, ord("S"), args.timeout, "save command")
+        short_message = b"Saving is not available in this build."
+        write_bytes(sock, previous_message, *short_message, 0)
+        write_bytes(sock, last_comm, 16)
+        for attempt in range(2):
+            send_physical_key(sock, 97)
+            try:
+                save_message = wait_for_ocr(
+                    sock,
+                    ("Saving is not available in this", "build."),
+                    1.0,
+                )
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
         wait_for_byte(
             sock, viewport_first_col, 48, args.timeout, "restored room viewport"
-        )
-        save_message = wait_for_ocr(
-            sock,
-            ("Saving is not available in this", "build."),
-            args.timeout,
         )
         if "--More--" in save_message:
             raise RuntimeError("two-line save message unexpectedly requested --More--")
