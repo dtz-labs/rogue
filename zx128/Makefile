@@ -1,6 +1,12 @@
 .DEFAULT_GOAL := all
 ROOT := $(abspath ..)
 Z88DK ?=
+JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+
+# GNU Make has no portable "-j auto" mode.  Start the actual build in a
+# recursive make using all available logical CPUs, unless the caller already
+# supplied a -j option.
+AUTO_JOBS = $(if $(filter -j%,$(MAKEFLAGS)),,-j$(JOBS))
 
 ifneq ($(strip $(Z88DK)),)
 Z88DK_PREFIX := $(if $(filter /%,$(Z88DK)),$(abspath $(Z88DK)),$(abspath $(ROOT)/$(Z88DK)))
@@ -60,10 +66,13 @@ COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
 
 $(OBJS): $(COMMON_DEPS)
 
-.PHONY: all check-zesarux clean layout run-zesarux run-zesarux-zx128 \
+.PHONY: all build check-zesarux clean layout run-zesarux run-zesarux-zx128 \
 	smoke-zesarux smoke-zesarux-zx128
 
-all: $(TAP)
+all: build
+
+build:
+	+$(MAKE) $(AUTO_JOBS) $(TAP)
 
 $(BUILD)/fixed/%.o: $(ROOT)/%.c
 	@mkdir -p $(@D)
@@ -122,7 +131,7 @@ $(TAP): $(OBJS)
 	$(ZCC_ENV) $(ZCC) $(LDFLAGS) -o $(MAIN_BIN) $(OBJS)
 	@test -f "$@" || { echo "z88dk did not create expected TAP: $@" >&2; exit 1; }
 
-layout: $(TAP)
+layout: build
 	python3 tools/check_layout.py --map $(MAP) --main-bin $(MAIN_BIN) \
 		--stack-reserve 3072 --heap-reserve 3072
 

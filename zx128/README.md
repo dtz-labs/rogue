@@ -69,6 +69,9 @@ make -C zx128
 make -C zx128 layout
 ```
 
+Builds use all available logical CPUs by default. Override the automatic job
+count with `JOBS=8`, or pass an explicit GNU Make limit such as `-j4`.
+
 Override `Z88DK=/path/to/z88dk` when the checkout is elsewhere.  Relative
 `Z88DK` values are resolved from the repository root rather than from the
 `zx128` directory entered by `make -C`, so a sibling checkout works as expected:
