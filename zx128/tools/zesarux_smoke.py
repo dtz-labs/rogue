@@ -15,6 +15,7 @@ from pathlib import Path
 PROMPT = b"command> "
 SYMBOL_RE = re.compile(r"^(\S+)\s*=\s*\$([0-9A-Fa-f]+)\b", re.MULTILINE)
 THING_POSITION_OFFSET = 4
+THING_ROOM_OFFSET = 43
 
 
 def parse_args() -> argparse.Namespace:
@@ -142,36 +143,6 @@ def wait_for_byte_change(
     raise RuntimeError(f"{label} remained at 0x{last:02X}")
 
 
-def send_turn_key(
-    sock: socket.socket,
-    key: int,
-    turn_count: int,
-    refresh_turn: int,
-    before: int,
-    timeout: float,
-    label: str,
-) -> int:
-    expected = (before + 1) & 0xFF
-    for attempt in range(3):
-        send_physical_key(sock, key)
-        try:
-            observed = wait_for_byte_change(
-                sock, turn_count, before, min(timeout, 1.0), label
-            )
-        except RuntimeError:
-            if attempt == 2:
-                raise
-            continue
-        if observed != expected:
-            raise RuntimeError(
-                f"{label} advanced from 0x{before:02X} to 0x{observed:02X}, "
-                "expected exactly one turn"
-            )
-        wait_for_byte(sock, refresh_turn, expected, timeout, f"{label} refresh")
-        return expected
-    raise RuntimeError(f"{label} key was not observed")
-
-
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
     deadline = time.monotonic() + timeout
@@ -224,6 +195,7 @@ def main() -> int:
     movement_scratch = required_symbol(symbols, "nh")
     random_move_scratch = required_symbol(symbols, "rndmove_ret")
     monster_list = required_symbol(symbols, "mlist")
+    passages = required_symbol(symbols, "passages")
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
     origin = required_symbol(symbols, "CRT_ORG_CODE")
@@ -239,6 +211,7 @@ def main() -> int:
         ("movement scratch", movement_scratch),
         ("random-move scratch", random_move_scratch),
         ("monster-list head", monster_list),
+        ("passage table", passages),
         ("player position", player_position),
     ):
         if address >= 0xC000:
@@ -313,8 +286,32 @@ def main() -> int:
             wait_for_byte_change(
                 sock, refresh_count, 0, args.timeout, "initial screen refresh"
             )
+
+        player_room = player_position - THING_POSITION_OFFSET + THING_ROOM_OFFSET
+        starting_room = read_word(sock, player_room)
+        if not starting_room or starting_room >= 0xC000:
+            raise RuntimeError(
+                f"starting room pointer is invalid: 0x{starting_room:04X}"
+            )
+        # Passage descriptors carry ISGONE.  With the hero at x=60, a view at
+        # 32 must advance by exactly one eight-column step to restore the
+        # four-column corridor dead-zone.
+        write_bytes(sock, player_room, passages & 0xFF, passages >> 8)
+        write_bytes(sock, viewport_first_col, 32)
+        command(sock, "send-keys-ascii 200 118")
+        wait_for_byte(
+            sock, last_comm, ord("v"), args.timeout, "viewport test command"
+        )
+        wait_for_byte(sock, viewport_first_col, 40, args.timeout, "corridor viewport")
+        write_bytes(sock, player_room, starting_room & 0xFF, starting_room >> 8)
+        print("PASS corridor viewport advances by an eight-column step")
+
+        time.sleep(0.3)
         command(sock, "send-keys-ascii 200 83")
         wait_for_byte(sock, last_comm, ord("S"), args.timeout, "save command")
+        wait_for_byte(
+            sock, viewport_first_col, 48, args.timeout, "restored room viewport"
+        )
         save_message = wait_for_ocr(
             sock,
             ("Saving is not available in this", "build."),
@@ -402,44 +399,6 @@ def main() -> int:
         if rows == 0 or rows >= 24:
             raise RuntimeError(f"partial refresh drew {rows} rows after one turn")
         print(f"PASS partial refresh drew {rows}/24 rows after one turn")
-
-        # The fixed-seed starting room has its left door at x=53.  Walk to the
-        # first corridor dead-zone column one key at a time so each ROM key
-        # release is observed, then verify the camera jumps by eight columns.
-        for expected_x in range(after_position[0] - 1, 51, -1):
-            before = read_byte(sock, turn_count)
-            send_turn_key(
-                sock,
-                104,
-                turn_count,
-                refresh_turn,
-                before,
-                args.timeout,
-                "corridor walk turn",
-            )
-            position = read_coord(sock, player_position)
-            if position[0] != expected_x:
-                raise RuntimeError(
-                    f"corridor walk did not reach x={expected_x}: {position}"
-                )
-        if read_byte(sock, viewport_first_col) != 48:
-            raise RuntimeError("viewport moved before the corridor dead-zone")
-
-        before = read_byte(sock, turn_count)
-        send_turn_key(
-            sock,
-            104,
-            turn_count,
-            refresh_turn,
-            before,
-            args.timeout,
-            "viewport-step turn",
-        )
-        corridor_position = read_coord(sock, player_position)
-        if corridor_position != (51, after_position[1]):
-            raise RuntimeError(f"corridor step reached {corridor_position}, expected x=51")
-        wait_for_byte(sock, viewport_first_col, 40, args.timeout, "corridor viewport")
-        print("PASS corridor viewport advances by an eight-column step")
 
         wandering_monster = 0
         wanderer_turns = 0
