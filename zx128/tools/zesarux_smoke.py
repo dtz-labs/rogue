@@ -93,6 +93,12 @@ def read_byte(sock: socket.socket, address: int) -> int:
     raise RuntimeError(f"could not parse byte at 0x{address:04X}: {response!r}")
 
 
+def read_coord(sock: socket.socket, address: int) -> tuple[int, int]:
+    x = read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
+    y = read_byte(sock, address + 2) | (read_byte(sock, address + 3) << 8)
+    return x, y
+
+
 def wait_for_byte(
     sock: socket.socket, address: int, expected: int, timeout: float, label: str
 ) -> None:
@@ -156,6 +162,10 @@ def main() -> int:
     rendered_rows = required_symbol(symbols, "zx_rendered_rows")
     refresh_count = required_symbol(symbols, "zx_refresh_count")
     refresh_turn = required_symbol(symbols, "zx_refresh_turn")
+    movement_scratch = required_symbol(symbols, "nh")
+    random_move_scratch = required_symbol(symbols, "rndmove_ret")
+    # THING starts with two 16-bit list pointers on this target.
+    player_position = required_symbol(symbols, "player") + 4
     origin = required_symbol(symbols, "CRT_ORG_CODE")
     for label, address in (
         ("boot marker", boot_stage),
@@ -164,6 +174,9 @@ def main() -> int:
         ("rendered-row counter", rendered_rows),
         ("refresh counter", refresh_count),
         ("refresh-turn snapshot", refresh_turn),
+        ("movement scratch", movement_scratch),
+        ("random-move scratch", random_move_scratch),
+        ("player position", player_position),
     ):
         if address >= 0xC000:
             raise RuntimeError(f"{label} is bank-dependent at 0x{address:04X}")
@@ -223,23 +236,33 @@ def main() -> int:
             wait_for_byte_change(
                 sock, refresh_count, 0, args.timeout, "initial screen refresh"
             )
+        before_position = read_coord(sock, player_position)
         before_physical = read_byte(sock, turn_count)
-        command(sock, "send-keys-event 115 1")
+        command(sock, "send-keys-event 108 1")
         time.sleep(0.1)
-        command(sock, "send-keys-event 115 0")
-        wait_for_byte(sock, last_comm, ord("s"), args.timeout, "physical S key")
+        command(sock, "send-keys-event 108 0")
+        wait_for_byte(sock, last_comm, ord("l"), args.timeout, "physical L key")
         after_physical = (before_physical + 1) & 0xFF
         wait_for_byte(
             sock,
             turn_count,
             after_physical,
             args.timeout,
-            "physical S turn",
+            "physical L turn",
         )
         wait_for_byte(
-            sock, refresh_turn, after_physical, args.timeout, "post-S refresh"
+            sock, refresh_turn, after_physical, args.timeout, "post-L refresh"
         )
-        print("PASS physical keyboard event decodes as ASCII 's' and executes a turn")
+        after_position = read_coord(sock, player_position)
+        expected_position = (before_position[0] + 1, before_position[1])
+        if after_position != expected_position:
+            raise RuntimeError(
+                f"physical L did not move right: {before_position} -> {after_position}"
+            )
+        print(
+            "PASS emulated keyboard event decodes as ASCII 'l' and moves the hero "
+            f"{before_position} -> {after_position}"
+        )
 
         before = read_byte(sock, turn_count)
         command(sock, "send-keys-ascii 200 46")

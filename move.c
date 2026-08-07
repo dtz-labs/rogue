@@ -18,7 +18,12 @@
  * used to hold the new hero position
  */
 
+#ifndef ZX128
 coord nh;
+static coord rndmove_ret;
+#else
+extern coord rndmove_ret;
+#endif
 
 /*
  * do_run:
@@ -366,17 +371,15 @@ rndmove(THING *who)
     THING *obj;
     int x, y;
     char ch;
-    static coord ret;  /* what we will be returning */
-
-    y = ret.y = who->t_pos.y + rnd(3) - 1;
-    x = ret.x = who->t_pos.x + rnd(3) - 1;
+    y = rndmove_ret.y = who->t_pos.y + rnd(3) - 1;
+    x = rndmove_ret.x = who->t_pos.x + rnd(3) - 1;
     /*
      * Now check to see if that's a legal move.  If not, don't move.
      * (I.e., bump into the wall or whatever)
      */
     if (y == who->t_pos.y && x == who->t_pos.x)
-	return &ret;
-    if (!diag_ok(&who->t_pos, &ret))
+	return &rndmove_ret;
+    if (!diag_ok(&who->t_pos, &rndmove_ret))
 	goto bad;
     else
     {
@@ -392,11 +395,11 @@ rndmove(THING *who)
 		goto bad;
 	}
     }
-    return &ret;
+    return &rndmove_ret;
 
 bad:
-    ret = who->t_pos;
-    return &ret;
+    rndmove_ret = who->t_pos;
+    return &rndmove_ret;
 }
 
 /*

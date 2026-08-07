@@ -5,6 +5,10 @@
 volatile unsigned char zx_boot_stage;
 volatile unsigned char zx_turn_count;
 
+/* Passed from bank 0 movement code to bank 6/7 helpers. */
+coord nh;
+coord rndmove_ret;
+
 static void stop_forever(void)
 {
     for (;;)

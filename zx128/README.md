@@ -104,7 +104,8 @@ make -C zx128 smoke-zesarux Z88DK=../z88dk
 
 It boots the TAP headlessly, waits for Rogue's command loop, verifies the BASIC
 loader and rendered screen through ZEsarUX's remote protocol, checks that the
-ROM keyboard state is intact, sends a physical `S` key event, then sends `.`
-and checks that exactly one turn completes.  It also verifies that an ordinary
-turn redraws fewer than 24 rows and writes a captured Spectrum screen to
+ROM keyboard state is intact, sends an emulated `L` keyboard-matrix event, and
+verifies that the hero actually moves right.  It then sends `.` and checks that
+exactly one turn completes.  It also verifies that an ordinary turn redraws
+fewer than 24 rows and writes a captured Spectrum screen to
 `zx128/build/rogue-zx128-smoke.pbm`.
