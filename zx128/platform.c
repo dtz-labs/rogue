@@ -2,6 +2,9 @@
 #include <string.h>
 #include "rogue.h"
 
+volatile unsigned char zx_boot_stage;
+volatile unsigned char zx_turn_count;
+
 static void stop_forever(void)
 {
     for (;;)
@@ -10,12 +13,13 @@ static void stop_forever(void)
 
 int main(void)
 {
-    strcpy(whoami, "Rogue");
+    zx_boot_stage = 0x10;
     strcpy(fruit, "slime-mold");
     dnum = 1;
     seed = 0x13579bdfL;
 
     initscr();
+    zx_boot_stage = 0x20;
     init_probs();
     init_player();
     init_names();
@@ -23,13 +27,19 @@ int main(void)
     init_stones();
     init_materials();
     setup();
+    zx_boot_stage = 0x30;
 
     hw = newwin(LINES, COLS, 0, 0);
     new_level();
+    zx_boot_stage = 0x40;
     start_daemon(zx_cb_runners, 0, AFTER);
+    zx_boot_stage = 0x41;
     start_daemon(zx_cb_doctor, 0, AFTER);
+    zx_boot_stage = 0x42;
     fuse(zx_cb_swander, 0, WANDERTIME, AFTER);
+    zx_boot_stage = 0x43;
     start_daemon(zx_cb_stomach, 0, AFTER);
+    zx_boot_stage = 0x44;
     playit();
     return 0;
 }
@@ -52,9 +62,15 @@ void playit(void)
 {
     inv_type = INV_SLOW;
     oldpos = hero;
+    zx_boot_stage = 0x50;
     oldrp = roomin(&hero);
-    while (playing)
+    zx_boot_stage = 0x51;
+    while (playing) {
+        zx_boot_stage = 0x52;
         command();
+        ++zx_turn_count;
+        zx_boot_stage = 0x53;
+    }
 }
 
 void quit(int ignored)

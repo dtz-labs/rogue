@@ -23,7 +23,7 @@ void
 read_scroll()
 {
     THING *obj;
-    PLACE *pp;
+    PLACE place;
     int y, x;
     char ch;
     int i;
@@ -170,8 +170,8 @@ read_scroll()
 	    for (y = 1; y < NUMLINES - 1; y++)
 		for (x = 0; x < NUMCOLS; x++)
 		{
-		    pp = INDEX(y, x);
-		    switch (ch = pp->p_ch)
+		    PLACE_GET(y, x, place);
+		    switch (ch = place.p_ch)
 		    {
 			case DOOR:
 			case STAIRS:
@@ -179,49 +179,50 @@ read_scroll()
 
 			case '-':
 			case '|':
-			    if (!(pp->p_flags & F_REAL))
+			    if (!(place.p_flags & F_REAL))
 			    {
-				ch = pp->p_ch = DOOR;
-				pp->p_flags |= F_REAL;
+				ch = place.p_ch = DOOR;
+				place.p_flags |= F_REAL;
 			    }
 			    break;
 
 			case ' ':
-			    if (pp->p_flags & F_REAL)
+			    if (place.p_flags & F_REAL)
 				goto def;
-			    pp->p_flags |= F_REAL;
-			    ch = pp->p_ch = PASSAGE;
+			    place.p_flags |= F_REAL;
+			    ch = place.p_ch = PASSAGE;
 			    /* FALLTHROUGH */
 
 			case PASSAGE:
 pass:
-			    if (!(pp->p_flags & F_REAL))
-				pp->p_ch = PASSAGE;
-			    pp->p_flags |= (F_SEEN|F_REAL);
+			    if (!(place.p_flags & F_REAL))
+				place.p_ch = PASSAGE;
+			    place.p_flags |= (F_SEEN|F_REAL);
 			    ch = PASSAGE;
 			    break;
 
 			case FLOOR:
-			    if (pp->p_flags & F_REAL)
+			    if (place.p_flags & F_REAL)
 				ch = ' ';
 			    else
 			    {
 				ch = TRAP;
-				pp->p_ch = TRAP;
-				pp->p_flags |= (F_SEEN|F_REAL);
+				place.p_ch = TRAP;
+				place.p_flags |= (F_SEEN|F_REAL);
 			    }
 			    break;
 
 			default:
 def:
-			    if (pp->p_flags & F_PASS)
+			    if (place.p_flags & F_PASS)
 				goto pass;
 			    ch = ' ';
 			    break;
 		    }
+		    PLACE_PUT(y, x, place);
 		    if (ch != ' ')
 		    {
-			if ((obj = pp->p_monst) != NULL)
+			if ((obj = place.p_monst) != NULL)
 			    obj->t_oldch = ch;
 			if (obj == NULL || !on(player, SEEMONST))
 			    mvaddch(y, x, ch);

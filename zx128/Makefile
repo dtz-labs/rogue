@@ -15,6 +15,7 @@ ZESARUX ?= $(shell command -v zesarux 2>/dev/null || \
 	test ! -x /Applications/ZEsarUX.app/Contents/MacOS/zesarux || \
 	printf '%s' /Applications/ZEsarUX.app/Contents/MacOS/zesarux)
 ZESARUX_FLAGS ?=
+SMOKE_PBM ?= $(BUILD)/rogue-zx128-smoke.pbm
 
 BUILD := build
 BASENAME := $(BUILD)/rogue-zx128
@@ -33,14 +34,14 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-export:CLIB_BANKING_STACK_SIZE=256 \
 	-lndos -m -create-app
 
-FIXED_NAMES := extern daemon io list
-FIXED_LOCAL_NAMES := platform curses_stub callback_thunks
-BANK0_NAMES := command move armor rings
+FIXED_NAMES := extern io
+FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data
+BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
 BANK3_NAMES := init misc monsters wizard vers rip_zx
 BANK4_NAMES := potions scrolls sticks weapons
 BANK6_NAMES := chase fight daemons
-BANK7_NAMES := new_level rooms passages
+BANK7_NAMES := new_level rooms passages daemon list
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
 	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES)))
@@ -51,13 +52,16 @@ BANK4_OBJS := $(addprefix $(BUILD)/bank4/,$(addsuffix .o,$(BANK4_NAMES)))
 BANK6_OBJS := $(addprefix $(BUILD)/bank6/,$(addsuffix .o,$(BANK6_NAMES)))
 BANK7_OBJS := $(addprefix $(BUILD)/bank7/,$(addsuffix .o,$(BANK7_NAMES)))
 OBJS := $(FIXED_OBJS) $(BANK0_OBJS) $(BANK1_OBJS) $(BANK3_OBJS) \
-	$(BANK4_OBJS) $(BANK6_OBJS) $(BANK7_OBJS)
+	$(BANK4_OBJS) $(BANK6_OBJS) $(BANK7_OBJS) \
+	$(BUILD)/bank0/bank_storage.o $(BUILD)/bank1/bank_storage.o \
+	$(BUILD)/bank3/bank_storage.o $(BUILD)/bank4/bank_storage.o
 COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
 	include/curses.h include/zx_banking.h
 
 $(OBJS): $(COMMON_DEPS)
 
-.PHONY: all check-zesarux clean layout run-zesarux run-zesarux-zx128
+.PHONY: all check-zesarux clean layout run-zesarux run-zesarux-zx128 \
+	smoke-zesarux smoke-zesarux-zx128
 
 all: $(TAP)
 
@@ -73,12 +77,14 @@ define BANK_RULE
 $(BUILD)/bank$(1)/%.o: $(ROOT)/%.c
 	@mkdir -p $$(@D)
 	$$(ZCC_ENV) $$(ZCC) $$(CFLAGS) -DZX_BANK_$(1) \
-		--codeseg CODE_$(1) --constseg RODATA_$(1) -c $$< -o $$@
+		--codeseg CODE_$(1) --constseg RODATA_$(1) \
+		--dataseg DATA_$(1) --bssseg BSS_$(1) -c $$< -o $$@
 
 $(BUILD)/bank$(1)/%.o: %.c
 	@mkdir -p $$(@D)
 	$$(ZCC_ENV) $$(ZCC) $$(CFLAGS) -DZX_BANK_$(1) \
-		--codeseg CODE_$(1) --constseg RODATA_$(1) -c $$< -o $$@
+		--codeseg CODE_$(1) --constseg RODATA_$(1) \
+		--dataseg DATA_$(1) --bssseg BSS_$(1) -c $$< -o $$@
 endef
 
 $(eval $(call BANK_RULE,0))
@@ -87,6 +93,23 @@ $(eval $(call BANK_RULE,3))
 $(eval $(call BANK_RULE,4))
 $(eval $(call BANK_RULE,6))
 $(eval $(call BANK_RULE,7))
+
+$(BUILD)/bank3/vers.o: $(ROOT)/vers.c
+	@mkdir -p $(@D)
+	$(ZCC_ENV) $(ZCC) $(CFLAGS) -DZX_BANK_3 \
+		--codeseg CODE_3 --constseg RODATA_3 -c $< -o $@
+
+define STORAGE_RULE
+$(BUILD)/bank$(1)/bank_storage.o: bank_storage.c
+	@mkdir -p $$(@D)
+	$$(ZCC_ENV) $$(ZCC) $$(CFLAGS) -DZX_STORAGE_BANK=$(1) \
+		--bssseg BSS_$(1) -c $$< -o $$@
+endef
+
+$(eval $(call STORAGE_RULE,0))
+$(eval $(call STORAGE_RULE,1))
+$(eval $(call STORAGE_RULE,3))
+$(eval $(call STORAGE_RULE,4))
 
 $(BUILD)/bank7/rooms.o: $(ROOT)/rooms.c
 	@mkdir -p $(@D)
@@ -112,10 +135,18 @@ check-zesarux:
 
 run-zesarux: run-zesarux-zx128
 
-run-zesarux-zx128: $(TAP) check-zesarux
-	@echo "NOTE: this is still a ZX128 bring-up TAP; 'make layout' currently rejects it."
+run-zesarux-zx128: layout check-zesarux
 	"$(ZESARUX)" --noconfigfile --machine 128k \
 		--tape "$(abspath $(TAP))" --fastautoload $(ZESARUX_FLAGS)
+
+smoke-zesarux: smoke-zesarux-zx128
+
+smoke-zesarux-zx128: layout check-zesarux
+	python3 tools/zesarux_smoke.py \
+		--zesarux "$(ZESARUX)" \
+		--tap "$(abspath $(TAP))" \
+		--map "$(abspath $(MAP))" \
+		--screenshot "$(abspath $(SMOKE_PBM))"
 
 clean:
 	rm -rf $(BUILD)

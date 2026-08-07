@@ -92,8 +92,9 @@ over:
     {
 	if (!on(player, ISLEVIT))
 	{
-	    chat(nh.y, nh.x) = ch = TRAP;
-	    flat(nh.y, nh.x) |= F_REAL;
+	    ch = TRAP;
+	    PLACE_CH_SET(nh.y, nh.x, ch);
+	    PLACE_FLAGS_OR(nh.y, nh.x, F_REAL);
 	}
     }
     else if (on(player, ISHELD) && ch != 'F')
@@ -207,11 +208,11 @@ move_stuff:
 bool
 turn_ok(int y, int x)
 {
-    PLACE *pp;
+    PLACE place;
 
-    pp = INDEX(y, x);
-    return (pp->p_ch == DOOR
-	|| (pp->p_flags & (F_REAL|F_PASS)) == (F_REAL|F_PASS));
+    PLACE_GET(y, x, place);
+    return (place.p_ch == DOOR
+	|| (place.p_flags & (F_REAL|F_PASS)) == (F_REAL|F_PASS));
 }
 
 /*
@@ -222,10 +223,10 @@ turn_ok(int y, int x)
 void
 turnref()
 {
-    PLACE *pp;
+    PLACE place;
 
-    pp = INDEX(hero.y, hero.x);
-    if (!(pp->p_flags & F_SEEN))
+    PLACE_GET(hero.y, hero.x, place);
+    if (!(place.p_flags & F_SEEN))
     {
 	if (jump)
 	{
@@ -233,7 +234,8 @@ turnref()
 	    refresh();
 	    leaveok(stdscr, FALSE);
 	}
-	pp->p_flags |= F_SEEN;
+	place.p_flags |= F_SEEN;
+	PLACE_PUT(hero.y, hero.x, place);
     }
 }
 
@@ -262,7 +264,7 @@ door_open(struct room *rp)
 char
 be_trapped(coord *tc)
 {
-    PLACE *pp;
+    PLACE place;
     THING *arrow;
     char tr;
 
@@ -270,10 +272,11 @@ be_trapped(coord *tc)
 	return T_RUST;	/* anything that's not a door or teleport */
     running = FALSE;
     count = FALSE;
-    pp = INDEX(tc->y, tc->x);
-    pp->p_ch = TRAP;
-    tr = pp->p_flags & F_TMASK;
-    pp->p_flags |= F_SEEN;
+    PLACE_GET(tc->y, tc->x, place);
+    place.p_ch = TRAP;
+    tr = place.p_flags & F_TMASK;
+    place.p_flags |= F_SEEN;
+    PLACE_PUT(tc->y, tc->x, place);
     switch (tr)
     {
 	case T_DOOR:
@@ -287,16 +290,16 @@ be_trapped(coord *tc)
             switch(rnd(11))
             {
                 case 0: msg("you are suddenly in a parallel dimension");
-                when 1: msg("the light in here suddenly seems %s", rainbow[rnd(cNCOLORS)]);
+                when 1: msg("the light in here suddenly seems %s", RANDOM_COLOR());
                 when 2: msg("you feel a sting in the side of your neck");
                 when 3: msg("multi-colored lines swirl around you, then fade");
-                when 4: msg("a %s light flashes in your eyes", rainbow[rnd(cNCOLORS)]);
+                when 4: msg("a %s light flashes in your eyes", RANDOM_COLOR());
                 when 5: msg("a spike shoots past your ear!");
-                when 6: msg("%s sparks dance across your armor", rainbow[rnd(cNCOLORS)]);
+                when 6: msg("%s sparks dance across your armor", RANDOM_COLOR());
                 when 7: msg("you suddenly feel very thirsty");
                 when 8: msg("you feel time speed up suddenly");
                 when 9: msg("time now seems to be going slower");
-                when 10: msg("you pack turns %s!", rainbow[rnd(cNCOLORS)]);
+                when 10: msg("you pack turns %s!", RANDOM_COLOR());
             }
 	when T_SLEEP:
 	    no_command += SLEEPTIME;

@@ -25,12 +25,20 @@ do_passages()
     struct rdes *r1, *r2 = NULL;
     int i, j;
     int roomcount;
-    static struct rdes
+    struct rdes
     {
 	bool	conn[MAXROOMS];		/* possible to connect to room i? */
 	bool	isconn[MAXROOMS];	/* connection been made to room i? */
 	bool	ingraph;		/* this room in graph already? */
-    } rdes[MAXROOMS] = {
+    };
+#ifdef ZX128
+    static struct rdes rdes[MAXROOMS];
+    static const unsigned int conn_mask[MAXROOMS] = {
+	0x00a, 0x015, 0x022, 0x051, 0x0aa,
+	0x114, 0x088, 0x150, 0x0a0
+    };
+#else
+    static struct rdes rdes[MAXROOMS] = {
 	{ { 0, 1, 0, 1, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0 },
 	{ { 1, 0, 1, 0, 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0 },
 	{ { 0, 1, 0, 0, 0, 1, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0 },
@@ -41,6 +49,7 @@ do_passages()
 	{ { 0, 0, 0, 0, 1, 0, 1, 0, 1 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0 },
 	{ { 0, 0, 0, 0, 0, 1, 0, 1, 0 }, { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0 },
     };
+#endif
 
     /*
      * reinitialize room graph description
@@ -48,7 +57,13 @@ do_passages()
     for (r1 = rdes; r1 <= &rdes[MAXROOMS-1]; r1++)
     {
 	for (j = 0; j < MAXROOMS; j++)
+	{
+#ifdef ZX128
+	    i = (int)(r1 - rdes);
+	    r1->conn[j] = (bool)((conn_mask[i] >> j) & 1U);
+#endif
 	    r1->isconn[j] = FALSE;
+	}
 	r1->ingraph = FALSE;
     }
 
@@ -273,14 +288,15 @@ conn(int r1, int r2)
 void
 putpass(coord *cp)
 {
-    PLACE *pp;
+    PLACE place;
 
-    pp = INDEX(cp->y, cp->x);
-    pp->p_flags |= F_PASS;
+    PLACE_GET(cp->y, cp->x, place);
+    place.p_flags |= F_PASS;
     if (rnd(10) + 1 < level && rnd(40) == 0)
-	pp->p_flags &= ~F_REAL;
+	place.p_flags &= ~F_REAL;
     else
-	pp->p_ch = PASSAGE;
+	place.p_ch = PASSAGE;
+    PLACE_PUT(cp->y, cp->x, place);
 }
 
 /*
@@ -292,24 +308,25 @@ putpass(coord *cp)
 void
 door(struct room *rm, coord *cp)
 {
-    PLACE *pp;
+    PLACE place;
 
     rm->r_exit[rm->r_nexits++] = *cp;
 
     if (rm->r_flags & ISMAZE)
 	return;
 
-    pp = INDEX(cp->y, cp->x);
+    PLACE_GET(cp->y, cp->x, place);
     if (rnd(10) + 1 < level && rnd(5) == 0)
     {
 	if (cp->y == rm->r_pos.y || cp->y == rm->r_pos.y + rm->r_max.y - 1)
-		pp->p_ch = '-';
+		place.p_ch = '-';
 	else
-		pp->p_ch = '|';
-	pp->p_flags &= ~F_REAL;
+		place.p_ch = '|';
+	place.p_flags &= ~F_REAL;
     }
     else
-	pp->p_ch = DOOR;
+	place.p_ch = DOOR;
+    PLACE_PUT(cp->y, cp->x, place);
 }
 
 #ifdef MASTER
@@ -321,30 +338,31 @@ door(struct room *rm, coord *cp)
 void
 add_pass()
 {
-    PLACE *pp;
+    PLACE place;
     int y, x;
     char ch;
 
     for (y = 1; y < NUMLINES - 1; y++)
 	for (x = 0; x < NUMCOLS; x++)
 	{
-	    pp = INDEX(y, x);
-	    if ((pp->p_flags & F_PASS) || pp->p_ch == DOOR ||
-		(!(pp->p_flags&F_REAL) && (pp->p_ch == '|' || pp->p_ch == '-')))
+	    PLACE_GET(y, x, place);
+	    if ((place.p_flags & F_PASS) || place.p_ch == DOOR ||
+		(!(place.p_flags&F_REAL) && (place.p_ch == '|' || place.p_ch == '-')))
 	    {
-		ch = pp->p_ch;
-		if (pp->p_flags & F_PASS)
+		ch = place.p_ch;
+		if (place.p_flags & F_PASS)
 		    ch = PASSAGE;
-		pp->p_flags |= F_SEEN;
+		place.p_flags |= F_SEEN;
+		PLACE_PUT(y, x, place);
 		move(y, x);
-		if (pp->p_monst != NULL)
-		    pp->p_monst->t_oldch = pp->p_ch;
-		else if (pp->p_flags & F_REAL)
+		if (place.p_monst != NULL)
+		    place.p_monst->t_oldch = place.p_ch;
+		else if (place.p_flags & F_REAL)
 		    addch(ch);
 		else
 		{
 		    standout();
-		    addch((pp->p_flags & F_PASS) ? PASSAGE : DOOR);
+		    addch((place.p_flags & F_PASS) ? PASSAGE : DOOR);
 		    standend();
 		}
 	    }
@@ -386,14 +404,14 @@ passnum()
 void
 numpass(int y, int x)
 {
-    char *fp;
+    char place_flags;
     struct room *rp;
     char ch;
 
     if (x >= NUMCOLS || x < 0 || y >= NUMLINES || y <= 0)
 	return;
-    fp = &flat(y, x);
-    if (*fp & F_PNUM)
+    place_flags = flat(y, x);
+    if (place_flags & F_PNUM)
 	return;
     if (newpnum)
     {
@@ -405,15 +423,16 @@ numpass(int y, int x)
      * or a numerable type of place
      */
     if ((ch = chat(y, x)) == DOOR ||
-	(!(*fp & F_REAL) && (ch == '|' || ch == '-')))
+	(!(place_flags & F_REAL) && (ch == '|' || ch == '-')))
     {
 	rp = &passages[pnum];
 	rp->r_exit[rp->r_nexits].y = y;
 	rp->r_exit[rp->r_nexits++].x = x;
     }
-    else if (!(*fp & F_PASS))
+    else if (!(place_flags & F_PASS))
 	return;
-    *fp |= pnum;
+    place_flags |= pnum;
+    PLACE_FLAGS_SET(y, x, place_flags);
     /*
      * recurse on the surrounding places
      */

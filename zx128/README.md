@@ -2,7 +2,7 @@
 
 This directory is the deliberately conservative first stage of a z88dk port.
 It builds the original game modules into Spectrum 128K RAM banks and produces
-a linker map before gameplay or renderer optimisation starts.
+a bootable TAP plus a checked linker map.
 
 Current scope:
 
@@ -13,11 +13,14 @@ Current scope:
 - banks 2 and 5 remain the Spectrum's fixed RAM pages;
 - save/restore, score files, shell escape, signals and Unix account handling
   are replaced by a small ZX platform layer;
-- `curses_stub.c` keeps an 80x24 logical screen but has no pixel renderer yet.
+- `curses_stub.c` keeps an 80x24 logical screen in banked RAM and renders a
+  horizontally tracked 32-column viewport with the Spectrum ROM font.
 
-The generated TAP is a memory-layout/bring-up artifact. It is not described as
-playable until cross-bank calls, callbacks and bank-lifetime rules for pointers
-have all been audited and a real renderer is connected.
+The generated TAP boots to Rogue's first level, draws the dungeon and status
+line, accepts keyboard input and executes turns.  This is still a bring-up
+milestone rather than a complete port: save/score files are disabled, the
+viewport is intentionally narrow, and the remaining cross-bank pointer
+lifetimes and less common gameplay paths still need auditing.
 
 The first complete link and its fixed-memory blocker are recorded in
 [`MEMORY.md`](MEMORY.md).
@@ -83,5 +86,13 @@ make -C zx128 run-zesarux ZESARUX=/path/to/zesarux
 make -C zx128 run-zesarux ZESARUX_FLAGS="--zoom 2"
 ```
 
-Launching does not imply that the current sizing image is playable: `make
-layout` still documents the fixed-memory and bank-lifetime blockers.
+Run the automated real-emulator smoke test with:
+
+```sh
+make -C zx128 smoke-zesarux Z88DK=../z88dk
+```
+
+It boots the TAP headlessly, waits for Rogue's command loop, verifies the BASIC
+loader and rendered screen through ZEsarUX's remote protocol, sends `.` and
+checks that exactly one turn completes.  It also writes a captured Spectrum
+screen to `zx128/build/rogue-zx128-smoke.pbm`.

@@ -23,8 +23,7 @@ void
 new_level()
 {
     THING *tp;
-    PLACE *pp;
-    char *sp;
+    char place_flags;
     int i;
 
     player.t_flags &= ~ISHELD;	/* unhold when you go down just in case */
@@ -33,12 +32,19 @@ new_level()
     /*
      * Clean things off from last level
      */
-    for (pp = places; pp < &places[MAXCOLS*MAXLINES]; pp++)
+#ifdef ZX128
+    zx_places_clear();
+#else
     {
-	pp->p_ch = ' ';
-	pp->p_flags = F_REAL;
-	pp->p_monst = NULL;
+        PLACE *pp;
+        for (pp = places; pp < &places[MAXCOLS*MAXLINES]; pp++)
+        {
+	    pp->p_ch = ' ';
+	    pp->p_flags = F_REAL;
+	    pp->p_monst = NULL;
+        }
     }
+#endif
     clear();
     /*
      * Free up the monsters on the last level
@@ -75,16 +81,17 @@ new_level()
 	    {
 		find_floor((struct room *) NULL, &stairs, FALSE, FALSE);
 	    } while (chat(stairs.y, stairs.x) != FLOOR);
-	    sp = &flat(stairs.y, stairs.x);
-	    *sp &= ~F_REAL;
-	    *sp |= rnd(NTRAPS);
+	    place_flags = flat(stairs.y, stairs.x);
+	    place_flags &= ~F_REAL;
+	    place_flags |= rnd(NTRAPS);
+	    PLACE_FLAGS_SET(stairs.y, stairs.x, place_flags);
 	}
     }
     /*
      * Place the staircase down.
      */
     find_floor((struct room *) NULL, &stairs, FALSE, FALSE);
-    chat(stairs.y, stairs.x) = STAIRS;
+    PLACE_CH_SET(stairs.y, stairs.x, STAIRS);
     seenstairs = FALSE;
 
     for (tp = mlist; tp != NULL; tp = next(tp))
@@ -152,7 +159,7 @@ put_things()
 	     * Put it somewhere
 	     */
 	    find_floor((struct room *) NULL, &obj->o_pos, FALSE, FALSE);
-	    chat(obj->o_pos.y, obj->o_pos.x) = (char) obj->o_type;
+	    PLACE_CH_SET(obj->o_pos.y, obj->o_pos.x, (char) obj->o_type);
 	}
     /*
      * If he is really deep in the dungeon and he hasn't found the
@@ -172,7 +179,7 @@ put_things()
 	 * Put it somewhere
 	 */
 	find_floor((struct room *) NULL, &obj->o_pos, FALSE, FALSE);
-	chat(obj->o_pos.y, obj->o_pos.x) = AMULET;
+	PLACE_CH_SET(obj->o_pos.y, obj->o_pos.x, AMULET);
     }
 }
 
@@ -203,7 +210,7 @@ treas_room()
 	tp = new_thing();
 	tp->o_pos = mp;
 	attach(lvl_obj, tp);
-	chat(mp.y, mp.x) = (char) tp->o_type;
+	PLACE_CH_SET(mp.y, mp.x, (char) tp->o_type);
     }
 
     /*

@@ -121,18 +121,19 @@ do_motion(THING *obj, int ydelta, int xdelta)
 void
 fall(THING *obj, bool pr)
 {
-    PLACE *pp;
+    PLACE place;
     static coord fpos;
 
     if (fallpos(&obj->o_pos, &fpos))
     {
-	pp = INDEX(fpos.y, fpos.x);
-	pp->p_ch = (char) obj->o_type;
+	PLACE_GET(fpos.y, fpos.x, place);
+	place.p_ch = (char) obj->o_type;
+	PLACE_PUT(fpos.y, fpos.x, place);
 	obj->o_pos = fpos;
 	if (cansee(fpos.y, fpos.x))
 	{
-	    if (pp->p_monst != NULL)
-		pp->p_monst->t_oldch = (char) obj->o_type;
+	    if (place.p_monst != NULL)
+		place.p_monst->t_oldch = (char) obj->o_type;
 	    else
 		mvaddch(fpos.y, fpos.x, obj->o_type);
 	}

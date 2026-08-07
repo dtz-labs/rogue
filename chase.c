@@ -89,12 +89,12 @@ relocate(THING *th, coord *new_loc)
 	th->t_room = roomin(new_loc);
 	set_oldch(th, new_loc);
 	oroom = th->t_room;
-	moat(th->t_pos.y, th->t_pos.x) = NULL;
+	PLACE_MONST_SET(th->t_pos.y, th->t_pos.x, NULL);
 
 	if (oroom != th->t_room)
 	    th->t_dest = find_dest(th);
 	th->t_pos = *new_loc;
-	moat(new_loc->y, new_loc->x) = th;
+	PLACE_MONST_SET(new_loc->y, new_loc->x, th);
     }
     move(new_loc->y, new_loc->x);
     if (see_monst(th))
@@ -204,8 +204,8 @@ over:
 		{
 		    detach(lvl_obj, obj);
 		    attach(th->t_pack, obj);
-		    chat(obj->o_pos.y, obj->o_pos.x) =
-			(th->t_room->r_flags & ISGONE) ? PASSAGE : FLOOR;
+		    PLACE_CH_SET(obj->o_pos.y, obj->o_pos.x,
+			(th->t_room->r_flags & ISGONE) ? PASSAGE : FLOOR);
 		    th->t_dest = find_dest(th);
 		    break;
 		}
@@ -425,12 +425,12 @@ struct room *
 roomin(coord *cp)
 {
     register struct room *rp;
-    register char *fp;
+    register char place_flags;
 
 
-    fp = &flat(cp->y, cp->x);
-    if (*fp & F_PASS)
-	return &passages[*fp & F_PNUM];
+    place_flags = flat(cp->y, cp->x);
+    if (place_flags & F_PASS)
+	return &passages[place_flags & F_PNUM];
 
     for (rp = rooms; rp < &rooms[MAXROOMS]; rp++)
 	if (cp->x <= rp->r_pos.x + rp->r_max.x && rp->r_pos.x <= cp->x

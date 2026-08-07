@@ -15,6 +15,10 @@
 #include <ctype.h>
 #include "rogue.h"
 
+#ifdef ZX128
+bool pack_used[26];
+#endif
+
 /*
  * add_pack:
  *	Pick up an object and add it to the pack.  If the argument is
@@ -44,7 +48,8 @@ add_pack(THING *obj, bool silent)
 	{
 	    detach(lvl_obj, obj);
 	    mvaddch(hero.y, hero.x, floor_ch());
-	    chat(hero.y, hero.x) = (proom->r_flags & ISGONE) ? PASSAGE : FLOOR;
+	    PLACE_CH_SET(hero.y, hero.x,
+		(proom->r_flags & ISGONE) ? PASSAGE : FLOOR);
 	    discard(obj);
 	    msg("the scroll turns to dust as you pick it up");
 	    return;
@@ -183,7 +188,8 @@ pack_room(bool from_floor, THING *obj)
     {
 	detach(lvl_obj, obj);
 	mvaddch(hero.y, hero.x, floor_ch());
-	chat(hero.y, hero.x) = (proom->r_flags & ISGONE) ? PASSAGE : FLOOR;
+	PLACE_CH_SET(hero.y, hero.x,
+	    (proom->r_flags & ISGONE) ? PASSAGE : FLOOR);
     }
 
     return TRUE;
@@ -452,7 +458,8 @@ money(int value)
 {
     purse += value;
     mvaddch(hero.y, hero.x, floor_ch());
-    chat(hero.y, hero.x) = (proom->r_flags & ISGONE) ? PASSAGE : FLOOR;
+    PLACE_CH_SET(hero.y, hero.x,
+	(proom->r_flags & ISGONE) ? PASSAGE : FLOOR);
     if (value > 0)
     {
 	if (!terse)

@@ -71,7 +71,7 @@ new_monster(THING *tp, char type, coord *cp)
     move(cp->y, cp->x);
     tp->t_oldch = CCHAR( inch() );
     tp->t_room = roomin(cp);
-    moat(cp->y, cp->x) = tp;
+    PLACE_MONST_SET(cp->y, cp->x, tp);
     mp = &monsters[tp->t_type-'A'];
     tp->t_stats.s_lvl = mp->m_stats.s_lvl + lev_add;
     tp->t_stats.s_maxhp = tp->t_stats.s_hpt = roll(tp->t_stats.s_lvl, 8);

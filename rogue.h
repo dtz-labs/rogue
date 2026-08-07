@@ -54,7 +54,13 @@
 #define until(expr)	while(!(expr))
 #define next(ptr)	(*ptr).l_next
 #define prev(ptr)	(*ptr).l_prev
+#ifdef ZX128
+#define winat(y,x)	zx_place_winat((y), (x))
+#define RANDOM_COLOR()	zx_random_color_name()
+#else
 #define winat(y,x)	(moat(y,x) != NULL ? moat(y,x)->t_disguise : chat(y,x))
+#define RANDOM_COLOR()	rainbow[rnd(cNCOLORS)]
+#endif
 #define ce(a,b)		((a).x == (b).x && (a).y == (b).y)
 #define hero		player.t_pos
 #define pstats		player.t_stats
@@ -71,10 +77,30 @@
 #define ISRING(h,r)	(cur_ring[h] != NULL && cur_ring[h]->o_which == r)
 #define ISWEARING(r)	(ISRING(LEFT, r) || ISRING(RIGHT, r))
 #define ISMULT(type) 	(type == POTION || type == SCROLL || type == FOOD)
+#ifdef ZX128
+#define chat(y,x)	zx_place_get_ch((y), (x))
+#define flat(y,x)	zx_place_get_flags((y), (x))
+#define moat(y,x)	zx_place_get_monst((y), (x))
+#define PLACE_GET(y,x,dst)	zx_place_get((y), (x), &(dst))
+#define PLACE_PUT(y,x,src)	zx_place_put((y), (x), &(src))
+#define PLACE_CH_SET(y,x,ch)	zx_place_set_ch((y), (x), (ch))
+#define PLACE_FLAGS_SET(y,x,flags)	zx_place_set_flags((y), (x), (flags))
+#define PLACE_FLAGS_OR(y,x,flags)	zx_place_or_flags((y), (x), (flags))
+#define PLACE_FLAGS_AND(y,x,flags)	zx_place_and_flags((y), (x), (flags))
+#define PLACE_MONST_SET(y,x,monst)	zx_place_set_monst((y), (x), (monst))
+#else
 #define INDEX(y,x)	(&places[((x) << 5) + (y)])
 #define chat(y,x)	(places[((x) << 5) + (y)].p_ch)
 #define flat(y,x)	(places[((x) << 5) + (y)].p_flags)
 #define moat(y,x)	(places[((x) << 5) + (y)].p_monst)
+#define PLACE_GET(y,x,dst)	((dst) = *INDEX((y), (x)))
+#define PLACE_PUT(y,x,src)	(*INDEX((y), (x)) = (src))
+#define PLACE_CH_SET(y,x,ch)	(chat((y), (x)) = (ch))
+#define PLACE_FLAGS_SET(y,x,flags)	(flat((y), (x)) = (flags))
+#define PLACE_FLAGS_OR(y,x,flags)	(flat((y), (x)) |= (flags))
+#define PLACE_FLAGS_AND(y,x,flags)	(flat((y), (x)) &= (flags))
+#define PLACE_MONST_SET(y,x,monst)	(moat((y), (x)) = (monst))
+#endif
 #define unc(cp)		(cp).y, (cp).x
 #ifdef MASTER
 #define debug		if (wizard) msg
@@ -447,6 +473,22 @@ typedef struct {
     THING *p_monst;
 } PLACE;
 
+#ifdef ZX128
+void zx_place_get(int y, int x, PLACE *place);
+void zx_place_put(int y, int x, const PLACE *place);
+char zx_place_get_ch(int y, int x);
+char zx_place_get_flags(int y, int x);
+THING *zx_place_get_monst(int y, int x);
+void zx_place_set_ch(int y, int x, char ch);
+void zx_place_set_flags(int y, int x, char flags);
+void zx_place_or_flags(int y, int x, char flags);
+void zx_place_and_flags(int y, int x, char flags);
+void zx_place_set_monst(int y, int x, THING *monst);
+char zx_place_winat(int y, int x);
+void zx_places_clear(void);
+char *zx_random_color_name(void);
+#endif
+
 /*
  * Array containing information on all the various types of monsters
  */
@@ -487,7 +529,9 @@ extern WINDOW	*hw;
 
 extern coord	delta, oldpos, stairs;
 
+#ifndef ZX128
 extern PLACE	places[];
+#endif
 
 extern THING	*cur_armor, *cur_ring[], *cur_weapon, *l_last_pick,
 		*last_pick, *lvl_obj, *mlist, player;
@@ -508,9 +552,9 @@ extern struct obj_info	arm_info[], pot_info[], ring_info[],
  */
 typedef void (*daemon_cb)(int);
 
-void	_attach(THING **list, THING *item);
-void	_detach(THING **list, THING *item);
-void	_free_list(THING **ptr);
+void	_attach(THING **list, THING *item) ZX_BANKED_7;
+void	_detach(THING **list, THING *item) ZX_BANKED_7;
+void	_free_list(THING **ptr) ZX_BANKED_7;
 void	addmsg(char *fmt, ...);
 bool	add_haste(bool potion) ZX_BANKED_3;
 void	add_pack(THING *obj, bool silent) ZX_BANKED_1;
@@ -536,13 +580,13 @@ void	d_level();
 void	death(char monst) ZX_BANKED_3;
 char	death_monst();
 void	dig(int y, int x);
-void	discard(THING *item);
+void	discard(THING *item) ZX_BANKED_7;
 void	discovered() ZX_BANKED_1;
 int	dist(int y1, int x1, int y2, int x2) ZX_BANKED_6;
 int	dist_cp(coord *c1, coord *c2);
 int	do_chase(THING *th);
-void	do_daemons(int flag);
-void	do_fuses(int flag);
+void	do_daemons(int flag) ZX_BANKED_7;
+void	do_fuses(int flag) ZX_BANKED_7;
 void	do_maze(struct room *rp);
 void	do_motion(THING *obj, int ydelta, int xdelta);
 void	do_move(int dy, int dx);
@@ -564,14 +608,14 @@ int	endmsg();
 void	enter_room(coord *cp) ZX_BANKED_7;
 void	erase_lamp(coord *pos, struct room *rp) ZX_BANKED_3;
 int	exp_add(THING *tp);
-void	extinguish(daemon_cb func);
+void	extinguish(daemon_cb func) ZX_BANKED_7;
 void	fall(THING *obj, bool pr) ZX_BANKED_4;
 void	fire_bolt(coord *start, coord *dir, char *name) ZX_BANKED_4;
 char	floor_at() ZX_BANKED_1;
 void	flush_type();
 int	fight(coord *mp, THING *weap, bool thrown) ZX_BANKED_6;
 void	fix_stick(THING *cur) ZX_BANKED_4;
-void	fuse(daemon_cb func, int arg, int time, int type);
+void	fuse(daemon_cb func, int arg, int time, int type) ZX_BANKED_7;
 bool	get_dir() ZX_BANKED_3;
 int	gethand();
 void	give_pack(THING *tp) ZX_BANKED_3;
@@ -579,7 +623,7 @@ void	help();
 void	hit(char *er, char *ee, bool noend);
 void	horiz(struct room *rp, int starty);
 void	leave_room(coord *cp) ZX_BANKED_7;
-void	lengthen(daemon_cb func, int xtime);
+void	lengthen(daemon_cb func, int xtime) ZX_BANKED_7;
 void	look(bool wakeup) ZX_BANKED_3;
 int	hit_monster(int y, int x, THING *obj);
 void	identify();
@@ -595,7 +639,7 @@ void	init_weapon(THING *weap, int which) ZX_BANKED_4;
 bool	inventory(THING *list, int type) ZX_BANKED_1;
 void	invis_on() ZX_BANKED_4;
 void	killed(THING *tp, bool pr) ZX_BANKED_6;
-void	kill_daemon(daemon_cb func);
+void	kill_daemon(daemon_cb func) ZX_BANKED_7;
 bool	lock_sc();
 void	miss(char *er, char *ee, bool noend);
 void	missile(int ydelta, int xdelta) ZX_BANKED_4;
@@ -654,8 +698,8 @@ bool	show_floor() ZX_BANKED_3;
 void	show_map();
 void	show_win(char *message);
 int	sign(int nm);
-int	spread(int nm);
-void	start_daemon(daemon_cb func, int arg, int type);
+int	spread(int nm) ZX_BANKED_3;
+void	start_daemon(daemon_cb func, int arg, int type) ZX_BANKED_7;
 void	start_score();
 void	status();
 int	step_ok(int ch);
@@ -754,7 +798,7 @@ coord	*rndmove(THING *who) ZX_BANKED_0;
 THING	*find_obj(int y, int x);
 THING	*get_item(char *purpose, int type);
 THING	*leave_pack(THING *obj, bool newobj, bool all) ZX_BANKED_1;
-THING	*new_item();
+THING	*new_item() ZX_BANKED_7;
 THING	*new_thing() ZX_BANKED_1;
 
 struct room	*roomin(coord *cp) ZX_BANKED_6;

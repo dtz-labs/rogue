@@ -29,11 +29,11 @@ look(bool wakeup)
     int x, y;
     int ch;
     THING *tp;
-    PLACE *pp;
+    PLACE place;
     struct room *rp;
     int ey, ex;
     int passcount;
-    char pfl, *fp, pch;
+    char pfl, pch;
     int sy, sx, sumhero = 0, diffhero = 0;
 # ifdef DEBUG
     static bool done = FALSE;
@@ -59,9 +59,9 @@ look(bool wakeup)
 	sumhero = hero.y + hero.x;
 	diffhero = hero.y - hero.x;
     }
-    pp = INDEX(hero.y, hero.x);
-    pch = pp->p_ch;
-    pfl = pp->p_flags;
+    PLACE_GET(hero.y, hero.x, place);
+    pch = place.p_ch;
+    pfl = place.p_flags;
 
     for (y = sy; y <= ey; y++)
 	if (y > 0 && y < NUMLINES - 1) for (x = sx; x <= ex; x++)
@@ -74,15 +74,14 @@ look(bool wakeup)
 		    continue;
 	    }
 
-	    pp = INDEX(y, x);
-	    ch = pp->p_ch;
+	    PLACE_GET(y, x, place);
+	    ch = place.p_ch;
 	    if (ch == ' ')		/* nothing need be done with a ' ' */
 		    continue;
-	    fp = &pp->p_flags;
 	    if (pch != DOOR && ch != DOOR)
-		if ((pfl & F_PASS) != (*fp & F_PASS))
+		if ((pfl & F_PASS) != (place.p_flags & F_PASS))
 		    continue;
-	    if (((*fp & F_PASS) || ch == DOOR) && 
+	    if (((place.p_flags & F_PASS) || ch == DOOR) &&
 		 ((pfl & F_PASS) || pch == DOOR))
 	    {
 		if (hero.x != x && hero.y != y &&
@@ -90,7 +89,7 @@ look(bool wakeup)
 			continue;
 	    }
 
-	    if ((tp = pp->p_monst) == NULL)
+	    if ((tp = place.p_monst) == NULL)
 		ch = trip_ch(y, x, ch);
 	    else
 		if (on(player, SEEMONST) && on(*tp, ISINVIS))

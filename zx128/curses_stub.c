@@ -5,12 +5,20 @@
 
 #define ZX_SCREEN_ROWS 24
 #define ZX_SCREEN_COLS 80
+#define ZX_VISIBLE_COLS 32
 #define ZX_FORMAT_SIZE 160
 
 static WINDOW screen_window;
 static WINDOW scratch_window;
-static unsigned char screen_cells[ZX_SCREEN_ROWS * ZX_SCREEN_COLS];
 static unsigned char curses_ended;
+static unsigned char physical_row[ZX_VISIBLE_COLS];
+
+void zx_screen_set(unsigned int index, unsigned char value);
+unsigned char zx_screen_get(unsigned int index);
+void zx_screen_copy(unsigned int index, unsigned char *target,
+                    unsigned char count);
+void zx_screen_fill(unsigned int index, unsigned int count,
+                    unsigned char value);
 
 WINDOW *stdscr = &screen_window;
 WINDOW *curscr = &screen_window;
@@ -28,6 +36,51 @@ static int format_to_window(WINDOW *win, const char *fmt, va_list args)
     int result = vsnprintf(buffer, sizeof buffer, fmt, args);
     waddstr(win, buffer);
     return result;
+}
+
+static void draw_physical_cell(unsigned char row, unsigned char col,
+                               unsigned char ch)
+{
+    const unsigned char *glyph;
+    unsigned char scanline;
+
+    if (ch < 32U || ch > 127U)
+        ch = '?';
+    glyph = (const unsigned char *)(0x3d00U +
+            ((unsigned int)(ch - 32U) << 3));
+    for (scanline = 0; scanline < 8U; ++scanline) {
+        unsigned int pixel_y = ((unsigned int)row << 3) + scanline;
+        unsigned int address = 0x4000U
+            + ((pixel_y & 0xc0U) << 5)
+            + ((pixel_y & 0x07U) << 8)
+            + ((pixel_y & 0x38U) << 2)
+            + col;
+        *(unsigned char *)address = glyph[scanline];
+    }
+    ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
+}
+
+static void render_physical_screen(void)
+{
+    unsigned char row;
+    unsigned char col;
+    unsigned char first_col;
+
+    if (screen_window._curx > ZX_VISIBLE_COLS / 2U)
+        first_col = screen_window._curx - ZX_VISIBLE_COLS / 2U;
+    else
+        first_col = 0;
+    if (first_col > ZX_SCREEN_COLS - ZX_VISIBLE_COLS)
+        first_col = ZX_SCREEN_COLS - ZX_VISIBLE_COLS;
+
+    for (row = 0; row < ZX_SCREEN_ROWS; ++row) {
+        unsigned char row_first = (row == 0 || row == ZX_SCREEN_ROWS - 1)
+            ? 0 : first_col;
+        zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS + row_first,
+                       physical_row, ZX_VISIBLE_COLS);
+        for (col = 0; col < ZX_VISIBLE_COLS; ++col)
+            draw_physical_cell(row, col, physical_row[col]);
+    }
 }
 
 WINDOW *initscr(void)
@@ -87,7 +140,7 @@ int waddch(WINDOW *win, int ch)
     }
     if (win->_cury >= win->_maxy || win->_curx >= win->_maxx)
         return ERR;
-    screen_cells[cell_index(win, win->_cury, win->_curx)] = (unsigned char)ch;
+    zx_screen_set(cell_index(win, win->_cury, win->_curx), (unsigned char)ch);
     if (++win->_curx >= win->_maxx) {
         win->_curx = 0;
         if (win->_cury + 1 < win->_maxy)
@@ -160,16 +213,14 @@ int mvwprintw(WINDOW *win, int y, int x, const char *fmt, ...)
     return result;
 }
 
-int refresh(void) { return OK; }
-int wrefresh(WINDOW *win) { (void)win; return OK; }
+int refresh(void) { render_physical_screen(); return OK; }
+int wrefresh(WINDOW *win) { (void)win; return refresh(); }
 
 int werase(WINDOW *win)
 {
     int y;
-    int x;
     for (y = 0; y < win->_maxy; ++y)
-        for (x = 0; x < win->_maxx; ++x)
-            screen_cells[cell_index(win, y, x)] = ' ';
+        zx_screen_fill(cell_index(win, y, 0), win->_maxx, ' ');
     return wmove(win, 0, 0);
 }
 
@@ -179,9 +230,8 @@ int wclear(WINDOW *win) { return werase(win); }
 
 int wclrtoeol(WINDOW *win)
 {
-    int x;
-    for (x = win->_curx; x < win->_maxx; ++x)
-        screen_cells[cell_index(win, win->_cury, x)] = ' ';
+    zx_screen_fill(cell_index(win, win->_cury, win->_curx),
+                   win->_maxx - win->_curx, ' ');
     return OK;
 }
 
@@ -195,7 +245,7 @@ int mvwinch(WINDOW *win, int y, int x)
 {
     if (y < 0 || x < 0 || y >= win->_maxy || x >= win->_maxx)
         return ERR;
-    return screen_cells[cell_index(win, y, x)];
+    return zx_screen_get(cell_index(win, y, x));
 }
 
 int mvinch(int y, int x) { return mvwinch(stdscr, y, x); }

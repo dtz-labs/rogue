@@ -43,14 +43,18 @@ bool tombstone = TRUE;			/* Print out tombstone at end */
 #ifdef MASTER
 int wizard = FALSE;			/* True if allows wizard commands */
 #endif
+#ifndef ZX128
 bool pack_used[26] = {			/* Is the character used in the pack? */
     FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
     FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
     FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE
 };
+#endif
 
 char dir_ch;				/* Direction from last get_dir() call */
+#ifndef ZX128
 char file_name[MAXSTR];			/* Save file name */
+#endif
 char huh[MAXSTR];			/* The last message printed */
 char *p_colors[MAXPOTIONS];		/* Colors of the potions */
 char prbuf[2*MAXSTR];			/* buffer for sprintfs */
@@ -58,18 +62,22 @@ char *r_stones[MAXRINGS];		/* Stone settings of the rings */
 char runch;				/* Direction player is running */
 char *s_names[MAXSCROLLS];		/* Names of the scrolls */
 char take;				/* Thing she is taking */
+#ifndef ZX128
 char whoami[MAXSTR];			/* Name of player */
+#endif
 char *ws_made[MAXSTICKS];		/* What sticks are made of */
 char *ws_type[MAXSTICKS];		/* Is it a wand or a staff */
 int  orig_dsusp;			/* Original dsusp char */
 char fruit[MAXSTR] =			/* Favorite fruit */
 		{ 's', 'l', 'i', 'm', 'e', '-', 'm', 'o', 'l', 'd', '\0' };
+#ifndef ZX128
 char home[MAXSTR] = { '\0' };		/* User's home directory */
 char *inv_t_name[] = {
 	"Overwrite",
 	"Slow",
 	"Clear"
 };
+#endif
 char l_last_comm = '\0';		/* Last last_comm */
 char l_last_dir = '\0';			/* Last last_dir */
 char last_comm = '\0';			/* Last command typed */
@@ -147,7 +155,9 @@ coord delta;				/* Change indicated to get_dir() */
 coord oldpos;				/* Position before last look() call */
 coord stairs;				/* Location of staircase */
 
+#ifndef ZX128
 PLACE places[MAXLINES*MAXCOLS];		/* level map */
+#endif
 
 THING *cur_armor;			/* What he is wearing */
 THING *cur_ring[2];			/* Which rings are being worn */
@@ -321,6 +331,7 @@ struct obj_info ws_info[MAXSTICKS] = {
     { "cancellation",		 5, 280, NULL, FALSE },
 };
 
+#ifndef ZX128
 struct h_list helpstr[] = {
     {'?',	"	prints help",				TRUE},
     {'/',	"	identify object",			TRUE},
@@ -389,3 +400,4 @@ struct h_list helpstr[] = {
     {'v',	"	print version number",			TRUE},
     {0,		NULL }
 };
+#endif

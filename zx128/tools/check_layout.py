@@ -75,7 +75,6 @@ def main() -> int:
         errors.append("stack reserve cannot be negative")
     if args.heap_reserve < 0:
         errors.append("heap reserve cannot be negative")
-    fixed_limit = BANK_WINDOW_ORIGIN - args.stack_reserve - args.heap_reserve
 
     if not args.map_path.is_file():
         errors.append(f"map file does not exist: {args.map_path}")
@@ -87,6 +86,32 @@ def main() -> int:
         return 1
 
     symbols = read_symbols(args.map_path)
+    stack_top = symbols.get("REGISTER_SP", BANK_WINDOW_ORIGIN)
+    mapped_stack_reserve = symbols.get("__crt_stack_size")
+    if (
+        mapped_stack_reserve is not None
+        and args.stack_reserve
+        and mapped_stack_reserve != args.stack_reserve
+    ):
+        errors.append(
+            "stack reserve differs between command line and map: "
+            f"cli={args.stack_reserve}, map={mapped_stack_reserve}"
+        )
+    stack_reserve = (
+        mapped_stack_reserve
+        if mapped_stack_reserve is not None
+        else args.stack_reserve
+    )
+    banking_stack_reserve = symbols.get("CLIB_BANKING_STACK_SIZE", 0)
+    exit_stack_entries = symbols.get("__clib_exit_stack_size", 0)
+    exit_stack_reserve = exit_stack_entries * 2
+    fixed_limit = (
+        stack_top
+        - banking_stack_reserve
+        - exit_stack_reserve
+        - stack_reserve
+        - args.heap_reserve
+    )
     main_size = args.main_bin.stat().st_size
     if main_size == 0:
         errors.append(f"main binary is empty: {args.main_bin}")
@@ -133,7 +158,7 @@ def main() -> int:
     if fixed_tail is not None and fixed_tail > fixed_limit:
         errors.append(
             f"fixed image tail 0x{fixed_tail:04X} exceeds static-data limit "
-            f"0x{fixed_limit:04X} (stack reserve={args.stack_reserve}, "
+            f"0x{fixed_limit:04X} (stack reserve={stack_reserve}, "
             f"heap reserve={args.heap_reserve})"
         )
 
@@ -204,7 +229,9 @@ def main() -> int:
             "layout: fixed "
             f"origin=0x{origin:04X} tail=0x{fixed_tail:04X} "
             f"limit=0x{fixed_limit:04X} size={main_size}/{fixed_limit - origin} "
-            f"reserves(stack={args.stack_reserve},heap={args.heap_reserve})"
+            f"reserves(banking={banking_stack_reserve},"
+            f"atexit={exit_stack_reserve},stack={stack_reserve},"
+            f"heap={args.heap_reserve})"
         )
         section_sizes = {
             section: fixed_section_size(symbols, section)

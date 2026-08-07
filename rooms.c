@@ -124,7 +124,7 @@ do_rooms()
 	    gold->o_goldval = rp->r_goldval = GOLDCALC;
 	    find_floor(rp, &rp->r_gold, FALSE, FALSE);
 	    gold->o_pos = rp->r_gold;
-	    chat(rp->r_gold.y, rp->r_gold.x) = GOLD;
+	    PLACE_CH_SET(rp->r_gold.y, rp->r_gold.x, GOLD);
 	    gold->o_flags = ISMANY;
 	    gold->o_group = GOLDGRP;
 	    gold->o_type = GOLD;
@@ -168,7 +168,7 @@ draw_room(struct room *rp)
 	 */
 	for (y = rp->r_pos.y + 1; y < rp->r_pos.y + rp->r_max.y - 1; y++)
 	    for (x = rp->r_pos.x + 1; x < rp->r_pos.x + rp->r_max.x - 1; x++)
-		chat(y, x) = FLOOR;
+		PLACE_CH_SET(y, x, FLOOR);
     }
 }
 
@@ -183,7 +183,7 @@ vert(struct room *rp, int startx)
     int y;
 
     for (y = rp->r_pos.y + 1; y <= rp->r_max.y + rp->r_pos.y - 1; y++)
-	chat(y, startx) = '|';
+	PLACE_CH_SET(y, startx, '|');
 }
 
 /*
@@ -197,7 +197,7 @@ horiz(struct room *rp, int starty)
     int x;
 
     for (x = rp->r_pos.x; x <= rp->r_pos.x + rp->r_max.x - 1; x++)
-	chat(starty, x) = '-';
+	PLACE_CH_SET(starty, x, '-');
 }
 
 /*
@@ -334,7 +334,7 @@ rnd_pos(struct room *rp, coord *cp)
 bool
 find_floor(struct room *rp, coord *cp, int limit, bool monst)
 {
-    PLACE *pp;
+    PLACE place;
     int cnt;
     char compchar = 0;
     bool pickroom;
@@ -354,13 +354,13 @@ find_floor(struct room *rp, coord *cp, int limit, bool monst)
 	    compchar = ((rp->r_flags & ISMAZE) ? PASSAGE : FLOOR);
 	}
 	rnd_pos(rp, cp);
-	pp = INDEX(cp->y, cp->x);
+	PLACE_GET(cp->y, cp->x, place);
 	if (monst)
 	{
-	    if (pp->p_monst == NULL && step_ok(pp->p_ch))
+	    if (place.p_monst == NULL && step_ok(place.p_ch))
 		return TRUE;
 	}
-	else if (pp->p_ch == compchar)
+	else if (place.p_ch == compchar)
 	    return TRUE;
     }
 }
@@ -420,7 +420,7 @@ enter_room(coord *cp)
 void
 leave_room(coord *cp)
 {
-    PLACE *pp;
+    PLACE place;
     struct room *rp;
     int y, x;
     char floor;
@@ -463,8 +463,8 @@ leave_room(coord *cp)
 			    standend();
 			    break;
 			}
-                        pp = INDEX(y,x);
-			addch(pp->p_ch == DOOR ? DOOR : floor);
+                        PLACE_GET(y, x, place);
+			addch(place.p_ch == DOOR ? DOOR : floor);
 		    }
 	    }
 	}

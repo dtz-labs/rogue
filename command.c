@@ -25,7 +25,7 @@ command()
 {
     register char ch;
     register int ntimes = 1;			/* Number of player moves */
-    char *fp;
+    char place_flags;
     THING *mp;
     static char countch, direction, newcount = FALSE;
 
@@ -302,7 +302,7 @@ over:
 		    if (get_dir()) {
 			delta.y += hero.y;
 			delta.x += hero.x;
-			fp = &flat(delta.y, delta.x);
+			place_flags = flat(delta.y, delta.x);
                         if (!terse)
                             addmsg("You have found ");
 			if (chat(delta.y, delta.x) != TRAP)
@@ -310,8 +310,8 @@ over:
 			else if (on(player, ISHALU))
 			    msg(tr_name[rnd(NTRAPS)]);
 			else {
-			    msg(tr_name[*fp & F_TMASK]);
-			    *fp |= F_SEEN;
+			    msg(tr_name[place_flags & F_TMASK]);
+			    PLACE_FLAGS_OR(delta.y, delta.x, F_SEEN);
 			}
 		    }
 #ifdef MASTER
@@ -474,7 +474,7 @@ void
 search()
 {
     register int y, x;
-    register char *fp;
+    register char place_flags;
     register int ey, ex;
     int probinc;
     bool found;
@@ -489,40 +489,42 @@ search()
 	{
 	    if (y == hero.y && x == hero.x)
 		continue;
-	    fp = &flat(y, x);
-	    if (!(*fp & F_REAL))
+	    place_flags = flat(y, x);
+	    if (!(place_flags & F_REAL))
 		switch (chat(y, x))
 		{
 		    case '|':
 		    case '-':
 			if (rnd(5 + probinc) != 0)
 			    break;
-			chat(y, x) = DOOR;
+			PLACE_CH_SET(y, x, DOOR);
                         msg("a secret door");
 foundone:
 			found = TRUE;
-			*fp |= F_REAL;
+			place_flags |= F_REAL;
+			PLACE_FLAGS_SET(y, x, place_flags);
 			count = FALSE;
 			running = FALSE;
 			break;
 		    case FLOOR:
 			if (rnd(2 + probinc) != 0)
 			    break;
-			chat(y, x) = TRAP;
+			PLACE_CH_SET(y, x, TRAP);
 			if (!terse)
 			    addmsg("you found ");
 			if (on(player, ISHALU))
 			    msg(tr_name[rnd(NTRAPS)]);
 			else {
-			    msg(tr_name[*fp & F_TMASK]);
-			    *fp |= F_SEEN;
+			    msg(tr_name[place_flags & F_TMASK]);
+			    place_flags |= F_SEEN;
+			    PLACE_FLAGS_SET(y, x, place_flags);
 			}
 			goto foundone;
 			break;
 		    case ' ':
 			if (rnd(3 + probinc) != 0)
 			    break;
-			chat(y, x) = PASSAGE;
+			PLACE_CH_SET(y, x, PASSAGE);
 			goto foundone;
 		}
 	}

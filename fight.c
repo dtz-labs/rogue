@@ -615,7 +615,7 @@ remove_mon(coord *mp, THING *tp, bool waskill)
 	else
 	    discard(obj);
     }
-    moat(mp->y, mp->x) = NULL;
+    PLACE_MONST_SET(mp->y, mp->x, NULL);
     mvaddch(mp->y, mp->x, tp->t_oldch);
     detach(mlist, tp);
     if (on(*tp, ISTARGET))

@@ -18,6 +18,17 @@
 #include <string.h>
 #include "rogue.h"
 
+#ifdef ZX128
+char file_name[MAXSTR];
+char whoami[MAXSTR] = "Rogue";
+char home[MAXSTR] = { '\0' };
+char *inv_t_name[] = {
+    "Overwrite",
+    "Slow",
+    "Clear"
+};
+#endif
+
 #define	EQSTR(a, b, c)	(strncmp(a, b, c) == 0)
 
 #define	NUM_OPTS	(sizeof optlist / sizeof (OPTION))

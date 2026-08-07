@@ -160,8 +160,8 @@ drop()
      * Link it into the level object list
      */
     attach(lvl_obj, obj);
-    chat(hero.y, hero.x) = (char) obj->o_type;
-    flat(hero.y, hero.x) |= F_DROPPED;
+    PLACE_CH_SET(hero.y, hero.x, (char) obj->o_type);
+    PLACE_FLAGS_OR(hero.y, hero.x, F_DROPPED);
     obj->o_pos = hero;
     if (obj->o_type == AMULET)
 	amulet = FALSE;
