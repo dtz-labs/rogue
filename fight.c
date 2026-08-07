@@ -350,7 +350,11 @@ set_mname(THING *tp)
 {
     int ch;
     char *mname;
+#ifdef ZX128
+    static char tbuf[MAXSTR];
+#else
     static char tbuf[MAXSTR] = { 't', 'h', 'e', ' ' };
+#endif
 
     if (!see_monst(tp) && !on(player, SEEMONST))
 	return (terse ? "it" : "something");
@@ -366,6 +370,9 @@ set_mname(THING *tp)
     }
     else
 	mname = monsters[tp->t_type - 'A'].m_name;
+#ifdef ZX128
+    strcpy(tbuf, "the ");
+#endif
     strcpy(&tbuf[4], mname);
     return tbuf;
 }

@@ -118,8 +118,8 @@ int quiet = 0;				/* Number of quiet turns */
 int vf_hit = 0;				/* Number of time flytrap has hit */
 
 int dnum;				/* Dungeon number */
-int seed;				/* Random number seed */
-int e_levels[] = {
+rogue_seed_t seed;			/* Random number seed */
+rogue_exp_t e_levels[] = {
         10L,
 	20L,
 	40L,

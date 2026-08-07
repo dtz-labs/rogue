@@ -17,22 +17,22 @@
 typedef struct
 {
     int pa_flags;
-    void (*pa_daemon)(int);
+    daemon_cb pa_daemon;
     int pa_time;
     char *pa_high, *pa_straight;
 } PACT;
 
 static PACT p_actions[] =
 {
-	{ ISHUH,	unconfuse,	HUHDURATION,	/* P_CONFUSE */
+	{ ISHUH,	zx_cb_unconfuse,	HUHDURATION,	/* P_CONFUSE */
 		"what a tripy feeling!",
 		"wait, what's going on here. Huh? What? Who?" },
-	{ ISHALU,	come_down,	SEEDURATION,	/* P_LSD */
+	{ ISHALU,	zx_cb_come_down,	SEEDURATION,	/* P_LSD */
 		"Oh, wow!  Everything seems so cosmic!",
 		"Oh, wow!  Everything seems so cosmic!" },
 	{ 0,		NULL,	0 },			/* P_POISON */
 	{ 0,		NULL,	0 },			/* P_STRENGTH */
-	{ CANSEE,	unsee,	SEEDURATION,		/* P_SEEINVIS */
+	{ CANSEE,	zx_cb_unsee,	SEEDURATION,		/* P_SEEINVIS */
 		prbuf,
 		prbuf },
 	{ 0,		NULL,	0 },			/* P_HEALING */
@@ -42,10 +42,10 @@ static PACT p_actions[] =
 	{ 0,		NULL,	0 },			/* P_XHEAL */
 	{ 0,		NULL,	0 },			/* P_HASTE */
 	{ 0,		NULL,	0 },			/* P_RESTORE */
-	{ ISBLIND,	sight,	SEEDURATION,		/* P_BLIND */
+	{ ISBLIND,	zx_cb_sight,	SEEDURATION,		/* P_BLIND */
 		"oh, bummer!  Everything is dark!  Help!",
 		"a cloak of darkness falls around you" },
-	{ ISLEVIT,	land,	HEALTIME,		/* P_LEVIT */
+	{ ISLEVIT,	zx_cb_land,	HEALTIME,		/* P_LEVIT */
 		"oh, wow!  You're floating in the air!",
 		"you start to float in the air" }
 };
@@ -111,7 +111,7 @@ quaff()
 	    msg("you feel stronger, now.  What bulging muscles!");
 	when P_MFIND:
 	    player.t_flags |= SEEMONST;
-	    fuse((void(*)())turn_see, TRUE, HUHDURATION, AFTER);
+	    fuse(zx_cb_turn_see, TRUE, HUHDURATION, AFTER);
 	    if (!turn_see(FALSE))
 		msg("you have a %s feeling for a moment, then it passes",
 		    choose_str("normal", "strange"));
@@ -159,7 +159,7 @@ quaff()
 	    {
 		if (on(player, SEEMONST))
 		    turn_see(FALSE);
-		start_daemon(visuals, 0, BEFORE);
+		start_daemon(zx_cb_visuals, 0, BEFORE);
 		seenstairs = seen_stairs();
 	    }
 	    do_pot(P_LSD, TRUE);

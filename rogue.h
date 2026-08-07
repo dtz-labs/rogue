@@ -359,7 +359,7 @@ struct room {
  */
 struct stats {
     str_t s_str;			/* Strength */
-    int s_exp;				/* Experience */
+    rogue_exp_t s_exp;			/* Experience */
     int s_lvl;				/* level of mastery */
     int s_arm;				/* Armor class */
     int s_hpt;			/* Hit points */
@@ -479,7 +479,9 @@ extern int	a_class[], count, food_left, hungry_state, inpack,
 
 extern unsigned int	numscores;
 
-extern int	dnum, e_levels[], seed;
+extern int	dnum;
+extern rogue_exp_t	e_levels[];
+extern rogue_seed_t	seed;
 
 extern WINDOW	*hw;
 
@@ -504,37 +506,39 @@ extern struct obj_info	arm_info[], pot_info[], ring_info[],
 /*
  * Function types
  */
+typedef void (*daemon_cb)(int);
+
 void	_attach(THING **list, THING *item);
 void	_detach(THING **list, THING *item);
 void	_free_list(THING **ptr);
 void	addmsg(char *fmt, ...);
-bool	add_haste(bool potion);
-void	add_pack(THING *obj, bool silent);
+bool	add_haste(bool potion) ZX_BANKED_3;
+void	add_pack(THING *obj, bool silent) ZX_BANKED_1;
 void	add_pass();
-void	add_str(str_t *sp, int amt);
+void	add_str(str_t *sp, int amt) ZX_BANKED_3;
 void	accnt_maze(int y, int x, int ny, int nx);
-void	aggravate();
+void	aggravate() ZX_BANKED_3;
 int	attack(THING *mp);
 void	badcheck(char *name, struct obj_info *info, int bound);
 void	bounce(THING *weap, char *mname, bool noend);
 void	call();
-void	call_it(struct obj_info *info);
-bool	cansee(int y, int x);
+void	call_it(struct obj_info *info) ZX_BANKED_3;
+bool	cansee(int y, int x) ZX_BANKED_6;
 int	center(char *str);
-void	chg_str(int amt);
-void	check_level();
+void	chg_str(int amt) ZX_BANKED_3;
+void	check_level() ZX_BANKED_3;
 void	conn(int r1, int r2);
-void	command();
+void	command() ZX_BANKED_0;
 void	create_obj();
 
 void	current(THING *cur, char *how, char *where);
 void	d_level();
-void	death(char monst);
+void	death(char monst) ZX_BANKED_3;
 char	death_monst();
 void	dig(int y, int x);
 void	discard(THING *item);
-void	discovered();
-int	dist(int y1, int x1, int y2, int x2);
+void	discovered() ZX_BANKED_1;
+int	dist(int y1, int x1, int y2, int x2) ZX_BANKED_6;
 int	dist_cp(coord *c1, coord *c2);
 int	do_chase(THING *th);
 void	do_daemons(int flag);
@@ -546,71 +550,71 @@ void	do_passages();
 void	do_pot(int type, bool knowit);
 void	do_rooms();
 void	do_run(char ch);
-void	do_zap();
+void	do_zap() ZX_BANKED_4;
 void	doadd(char *fmt, va_list args);
 void	door(struct room *rm, coord *cp);
-void	door_open(struct room *rp);
+void	door_open(struct room *rp) ZX_BANKED_0;
 void	drain();
 void	draw_room(struct room *rp);
-void	drop();
-void	eat();
+void	drop() ZX_BANKED_1;
+void	eat() ZX_BANKED_3;
 size_t  encread(char *start, size_t size, FILE *inf);
 size_t	encwrite(char *start, size_t size, FILE *outf);
 int	endmsg();
-void	enter_room(coord *cp);
-void	erase_lamp(coord *pos, struct room *rp);
+void	enter_room(coord *cp) ZX_BANKED_7;
+void	erase_lamp(coord *pos, struct room *rp) ZX_BANKED_3;
 int	exp_add(THING *tp);
-void	extinguish(void (*func)());
-void	fall(THING *obj, bool pr);
-void	fire_bolt(coord *start, coord *dir, char *name);
-char	floor_at();
+void	extinguish(daemon_cb func);
+void	fall(THING *obj, bool pr) ZX_BANKED_4;
+void	fire_bolt(coord *start, coord *dir, char *name) ZX_BANKED_4;
+char	floor_at() ZX_BANKED_1;
 void	flush_type();
-int	fight(coord *mp, THING *weap, bool thrown);
-void	fix_stick(THING *cur);
-void	fuse(void (*func)(int), int arg, int time, int type);
-bool	get_dir();
+int	fight(coord *mp, THING *weap, bool thrown) ZX_BANKED_6;
+void	fix_stick(THING *cur) ZX_BANKED_4;
+void	fuse(daemon_cb func, int arg, int time, int type);
+bool	get_dir() ZX_BANKED_3;
 int	gethand();
-void	give_pack(THING *tp);
+void	give_pack(THING *tp) ZX_BANKED_3;
 void	help();
 void	hit(char *er, char *ee, bool noend);
 void	horiz(struct room *rp, int starty);
-void	leave_room(coord *cp);
-void	lengthen(void (*func)(), int xtime);
-void	look(bool wakeup);
+void	leave_room(coord *cp) ZX_BANKED_7;
+void	lengthen(daemon_cb func, int xtime);
+void	look(bool wakeup) ZX_BANKED_3;
 int	hit_monster(int y, int x, THING *obj);
 void	identify();
 void	illcom(int ch);
 void	init_check();
-void	init_colors();
-void	init_materials();
-void	init_names();
-void	init_player();
-void	init_probs();
-void	init_stones();
-void	init_weapon(THING *weap, int which);
-bool	inventory(THING *list, int type);
-void	invis_on();
-void	killed(THING *tp, bool pr);
-void	kill_daemon(void (*func)());
+void	init_colors() ZX_BANKED_3;
+void	init_materials() ZX_BANKED_3;
+void	init_names() ZX_BANKED_3;
+void	init_player() ZX_BANKED_3;
+void	init_probs() ZX_BANKED_3;
+void	init_stones() ZX_BANKED_3;
+void	init_weapon(THING *weap, int which) ZX_BANKED_4;
+bool	inventory(THING *list, int type) ZX_BANKED_1;
+void	invis_on() ZX_BANKED_4;
+void	killed(THING *tp, bool pr) ZX_BANKED_6;
+void	kill_daemon(daemon_cb func);
 bool	lock_sc();
 void	miss(char *er, char *ee, bool noend);
-void	missile(int ydelta, int xdelta);
+void	missile(int ydelta, int xdelta) ZX_BANKED_4;
 void	money(int value);
 int	move_monst(THING *tp);
 void	move_msg(THING *obj);
 int	msg(char *fmt, ...);
 void	nameit(THING *obj, char *type, char *which, struct obj_info *op, char *(*prfunc)(THING *));
-void	new_level();
-void	new_monster(THING *tp, char type, coord *cp);
+void	new_level() ZX_BANKED_7;
+void	new_monster(THING *tp, char type, coord *cp) ZX_BANKED_3;
 void	numpass(int y, int x);
-void	option();
+void	option() ZX_BANKED_1;
 void	open_score();
-void	parse_opts(char *str);
+void	parse_opts(char *str) ZX_BANKED_1;
 void 	passnum();
-char	*pick_color(char *col);
+char	*pick_color(char *col) ZX_BANKED_3;
 int	pick_one(struct obj_info *info, int nitems);
-void	pick_up(char ch);
-void	picky_inven();
+void	pick_up(char ch) ZX_BANKED_1;
+void	picky_inven() ZX_BANKED_1;
 void	pr_spec(struct obj_info *info, int nitems);
 void	pr_list();
 void	put_bool(void *b);
@@ -618,15 +622,15 @@ void	put_inv_t(void *ip);
 void	put_str(void *str);
 void	put_things();
 void	putpass(coord *cp);
-void	quaff();
+void	quaff() ZX_BANKED_4;
 void	raise_level();
-char	randmonster(bool wander);
-void	read_scroll();
-void    relocate(THING *th, coord *new_loc);
+char	randmonster(bool wander) ZX_BANKED_3;
+void	read_scroll() ZX_BANKED_4;
+void    relocate(THING *th, coord *new_loc) ZX_BANKED_6;
 void	remove_mon(coord *mp, THING *tp, bool waskill);
-void	reset_last();
+void	reset_last() ZX_BANKED_1;
 bool	restore(char *file, char **envp);
-int	ring_eat(int hand);
+int	ring_eat(int hand) ZX_BANKED_0;
 void	ring_on();
 void	ring_off();
 int	rnd(int range);
@@ -634,32 +638,32 @@ int	rnd_room();
 int	roll(int number, int sides);
 int	rs_save_file(FILE *savef);
 int	rs_restore_file(FILE *inf);
-void	runto(coord *runner);
-void	rust_armor(THING *arm);
-int	save(int which);
+void	runto(coord *runner) ZX_BANKED_6;
+void	rust_armor(THING *arm) ZX_BANKED_0;
+int	save(int which) ZX_BANKED_3;
 void	save_file(FILE *savef);
 void	save_game();
-int	save_throw(int which, THING *tp);
+int	save_throw(int which, THING *tp) ZX_BANKED_3;
 void	score(int amount, int flags, char monst);
 void	search();
 void	set_know(THING *obj, struct obj_info *info);
 void	set_oldch(THING *tp, coord *cp);
 void	setup();
 void	shell();
-bool	show_floor();
+bool	show_floor() ZX_BANKED_3;
 void	show_map();
 void	show_win(char *message);
 int	sign(int nm);
 int	spread(int nm);
-void	start_daemon(void (*func)(int), int arg, int type);
+void	start_daemon(daemon_cb func, int arg, int type);
 void	start_score();
 void	status();
 int	step_ok(int ch);
-void	strucpy(char *s1, char *s2, int len);
-int	swing(int at_lvl, int op_arm, int wplus);
+void	strucpy(char *s1, char *s2, int len) ZX_BANKED_1;
+int	swing(int at_lvl, int op_arm, int wplus) ZX_BANKED_6;
 void	take_off();
-void	teleport();
-void	total_winner();
+void	teleport() ZX_BANKED_3;
+void	total_winner() ZX_BANKED_3;
 void	thunk(THING *weap, char *mname, bool noend);
 void	treas_room();
 void	turnref();
@@ -668,28 +672,58 @@ void	uncurse(THING *obj);
 void	unlock_sc();
 void	vert(struct room *rp, int startx);
 void	wait_for(int ch);
-THING  *wake_monster(int y, int x);
-void	wanderer();
-void	waste_time();
+THING  *wake_monster(int y, int x) ZX_BANKED_3;
+void	wanderer() ZX_BANKED_3;
+void	waste_time() ZX_BANKED_0;
 void	wear();
-void	whatis(bool insist, int type);
-void	wield();
+void	whatis(bool insist, int type) ZX_BANKED_3;
+void	wield() ZX_BANKED_4;
+
+#ifdef ZX128
+void zx_cb_runners(int arg);
+void zx_cb_doctor(int arg);
+void zx_cb_swander(int arg);
+void zx_cb_stomach(int arg);
+void zx_cb_rollwand(int arg);
+void zx_cb_nohaste(int arg);
+void zx_cb_unconfuse(int arg);
+void zx_cb_unsee(int arg);
+void zx_cb_sight(int arg);
+void zx_cb_visuals(int arg);
+void zx_cb_come_down(int arg);
+void zx_cb_land(int arg);
+void zx_cb_turn_see(int arg);
+#else
+#define zx_cb_runners runners
+#define zx_cb_doctor doctor
+#define zx_cb_swander swander
+#define zx_cb_stomach stomach
+#define zx_cb_rollwand rollwand
+#define zx_cb_nohaste nohaste
+#define zx_cb_unconfuse unconfuse
+#define zx_cb_unsee unsee
+#define zx_cb_sight sight
+#define zx_cb_visuals visuals
+#define zx_cb_come_down come_down
+#define zx_cb_land land
+#define zx_cb_turn_see ((void (*)(int))turn_see)
+#endif
 
 bool	chase(THING *tp, coord *ee);
-bool	diag_ok(coord *sp, coord *ep);
-bool	dropcheck(THING *obj);
-bool	fallpos(coord *pos, coord *newpos);
-bool	find_floor(struct room *rp, coord *cp, int limit, bool monst);
-bool	is_magic(THING *obj);
+bool	diag_ok(coord *sp, coord *ep) ZX_BANKED_6;
+bool	dropcheck(THING *obj) ZX_BANKED_1;
+bool	fallpos(coord *pos, coord *newpos) ZX_BANKED_4;
+bool	find_floor(struct room *rp, coord *cp, int limit, bool monst) ZX_BANKED_7;
+bool	is_magic(THING *obj) ZX_BANKED_4;
 bool    is_symlink(char *sp);
 bool	levit_check();
 bool	pack_room(bool from_floor, THING *obj);
 bool	roll_em(THING *thatt, THING *thdef, THING *weap, bool hurl);
-bool	see_monst(THING *mp);
+bool	see_monst(THING *mp) ZX_BANKED_6;
 bool	seen_stairs();
 bool	turn_ok(int y, int x);
-bool	turn_see(bool turn_off);
-bool	is_current(THING *obj);
+bool	turn_see(bool turn_off) ZX_BANKED_4;
+bool	is_current(THING *obj) ZX_BANKED_3;
 int	passwd();
 
 char	be_trapped(coord *tc);
@@ -700,36 +734,36 @@ char	rnd_thing();
 
 char	*charge_str(THING *obj);
 char	*choose_str(char *ts, char *ns);
-char	*inv_name(THING *obj, bool drop);
+char	*inv_name(THING *obj, bool drop) ZX_BANKED_1;
 char	*nullstr(THING *ignored);
 char	*num(int n1, int n2, char type);
 char	*ring_num(THING *obj);
-char	*set_mname(THING *tp);
+char	*set_mname(THING *tp) ZX_BANKED_6;
 char	*vowelstr(char *str);
 
 int	get_bool(void *vp, WINDOW *win);
 int	get_inv_t(void *vp, WINDOW *win);
 int	get_num(void *vp, WINDOW *win);
 int	get_sf(void *vp, WINDOW *win);
-int	get_str(void *vopt, WINDOW *win);
+int	get_str(void *vopt, WINDOW *win) ZX_BANKED_1;
 int	trip_ch(int y, int x, int ch);
 
 coord	*find_dest(THING *tp);
-coord	*rndmove(THING *who);
+coord	*rndmove(THING *who) ZX_BANKED_0;
 
 THING	*find_obj(int y, int x);
 THING	*get_item(char *purpose, int type);
-THING	*leave_pack(THING *obj, bool newobj, bool all);
+THING	*leave_pack(THING *obj, bool newobj, bool all) ZX_BANKED_1;
 THING	*new_item();
-THING	*new_thing();
+THING	*new_thing() ZX_BANKED_1;
 
-struct room	*roomin(coord *cp);
+struct room	*roomin(coord *cp) ZX_BANKED_6;
 
 #define MAXDAEMONS 20
 
 extern struct delayed_action {
     int d_type;
-    void (*d_func)(int);
+    daemon_cb d_func;
     int d_arg;
     int d_time;
 } d_list[MAXDAEMONS];

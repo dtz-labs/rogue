@@ -4,8 +4,8 @@
  * @(#)io.c	4.32 (Berkeley) 02/05/99
  */
 
-#include <stdarg.h>
 #include <curses.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
 #include "rogue.h"
@@ -178,7 +178,7 @@ status()
     static int s_hp = 0;
     static int s_arm = 0;
     static str_t s_str = 0;
-    static int s_exp = 0;
+    static rogue_exp_t s_exp = 0;
     static char *state_name[] =
     {
 	"", "Hungry", "Weak", "Faint"
@@ -220,18 +220,18 @@ status()
     if (stat_msg)
     {
 	move(0, 0);
-        msg("Level: %d  Gold: %-5d  Hp: %*d(%*d)  Str: %2d(%d)  Arm: %-2d  Exp: %d/%ld  %s",
+	msg("Level: %d  Gold: %-5d  Hp: %*d(%*d)  Str: %2d(%d)  Arm: %-2d  Exp: %d/%ld  %s",
 	    level, purse, hpwidth, pstats.s_hpt, hpwidth, max_hp, pstats.s_str,
-	    max_stats.s_str, 10 - s_arm, pstats.s_lvl, pstats.s_exp,
+	    max_stats.s_str, 10 - s_arm, pstats.s_lvl, (long)pstats.s_exp,
 	    state_name[hungry_state]);
     }
     else
     {
 	move(STATLINE, 0);
                 
-        printw("Level: %d  Gold: %-5d  Hp: %*d(%*d)  Str: %2d(%d)  Arm: %-2d  Exp: %d/%d  %s",
+	printw("Level: %d  Gold: %-5d  Hp: %*d(%*d)  Str: %2d(%d)  Arm: %-2d  Exp: %d/%ld  %s",
 	    level, purse, hpwidth, pstats.s_hpt, hpwidth, max_hp, pstats.s_str,
-	    max_stats.s_str, 10 - s_arm, pstats.s_lvl, pstats.s_exp,
+	    max_stats.s_str, 10 - s_arm, pstats.s_lvl, (long)pstats.s_exp,
 	    state_name[hungry_state]);
     }
 

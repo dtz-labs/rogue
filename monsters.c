@@ -183,9 +183,9 @@ wake_monster(int y, int x)
 	    if (!save(VS_MAGIC))
 	    {
 		if (on(player, ISHUH))
-		    lengthen(unconfuse, spread(HUHDURATION));
+		    lengthen(zx_cb_unconfuse, spread(HUHDURATION));
 		else
-		    fuse(unconfuse, 0, spread(HUHDURATION), AFTER);
+		    fuse(zx_cb_unconfuse, 0, spread(HUHDURATION), AFTER);
 		player.t_flags |= ISHUH;
 		mname = set_mname(tp);
 		addmsg("%s", mname);

@@ -202,7 +202,7 @@ dropcheck(THING *obj)
 		break;
 	    case R_SEEINVIS:
 		unsee();
-		extinguish(unsee);
+		extinguish(zx_cb_unsee);
 		break;
 	}
     }

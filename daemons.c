@@ -52,7 +52,7 @@ doctor()
 void
 swander()
 {
-    start_daemon(rollwand, 0, BEFORE);
+    start_daemon(zx_cb_rollwand, 0, BEFORE);
 }
 
 /*
@@ -69,8 +69,8 @@ rollwand()
 	if (roll(1, 6) == 4)
 	{
 	    wanderer();
-	    kill_daemon(rollwand);
-	    fuse(swander, 0, WANDERTIME, BEFORE);
+	    kill_daemon(zx_cb_rollwand);
+	    fuse(zx_cb_swander, 0, WANDERTIME, BEFORE);
 	}
 	between = 0;
     }
@@ -111,7 +111,7 @@ sight()
 {
     if (on(player, ISBLIND))
     {
-	extinguish(sight);
+	extinguish(zx_cb_sight);
 	player.t_flags &= ~ISBLIND;
 	if (!(proom->r_flags & ISGONE))
 	    enter_room(&hero);
@@ -199,7 +199,7 @@ come_down()
     if (!on(player, ISHALU))
 	return;
 
-    kill_daemon(visuals);
+    kill_daemon(zx_cb_visuals);
     player.t_flags &= ~ISHALU;
 
     if (on(player, ISBLIND))

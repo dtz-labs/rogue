@@ -19,6 +19,8 @@
 #undef HAVE_STRING_H
 #endif
 #include "config.h"
+#elif defined(ZX128)
+/* The ZX target has no host/POSIX feature set. */
 #elif defined(__DJGPP__)
 #define HAVE_SYS_TYPES_H 1
 #define HAVE_PROCESS_H 1
@@ -100,13 +102,43 @@
 
 #include <stdlib.h>
 
+#ifdef ZX128
+#include <stdint.h>
+#include "zx_banking.h"
+#ifndef ROGUE_SCALAR_TYPES_DEFINED
+#define ROGUE_SCALAR_TYPES_DEFINED
+typedef uint32_t rogue_seed_t;
+typedef int32_t rogue_exp_t;
+#endif
+#else
+#ifndef ROGUE_SCALAR_TYPES_DEFINED
+#define ROGUE_SCALAR_TYPES_DEFINED
+typedef int rogue_seed_t;
+typedef int rogue_exp_t;
+#endif
+#define ZX_BANKED_0
+#define ZX_BANKED_1
+#define ZX_BANKED_3
+#define ZX_BANKED_4
+#define ZX_BANKED_6
+#define ZX_BANKED_7
+#endif
+
 #undef SIGTSTP
 
+#ifdef ZX128
+#define MAXSTR		160	/* one logical 80-column line plus formatting room */
+#else
 #define MAXSTR		1024	/* maximum length of strings */
+#endif
 #define MAXLINES	32	/* maximum number of screen lines used */
 #define MAXCOLS		80	/* maximum number of screen columns used */
 
+#ifdef ZX128
+#define RN		((uint16_t)((seed = seed*11109UL+13849UL) >> 16))
+#else
 #define RN		(((seed = seed*11109+13849) >> 16) & 0xffff)
+#endif
 #ifdef CTRL
 #undef CTRL
 #endif
@@ -127,31 +159,31 @@ extern FILE	*scoreboard;
  */
 
 void    auto_save(int);
-void	come_down();
-void	doctor();
+void	come_down() ZX_BANKED_6;
+void	doctor() ZX_BANKED_6;
 void	end_line();
 void    endit(int sig);
 void	fatal(char *s);
 void	getltchars();
-void	land();
+void	land() ZX_BANKED_6;
 void    leave(int);
 void	my_exit(int st);
-void	nohaste();
+void	nohaste() ZX_BANKED_6;
 void	playit();
 void    playltchars(void);
 void	print_disc(char);
 void    quit(int);
 void    resetltchars(void);
-void	rollwand();
-void	runners();
+void	rollwand() ZX_BANKED_6;
+void	runners() ZX_BANKED_6;
 void	set_order(int *order, int numthings);
-void	sight();
-void	stomach();
-void	swander();
+void	sight() ZX_BANKED_6;
+void	stomach() ZX_BANKED_6;
+void	swander() ZX_BANKED_6;
 void	tstp(int ignored);
-void	unconfuse();
-void	unsee();
-void	visuals();
+void	unconfuse() ZX_BANKED_6;
+void	unsee() ZX_BANKED_6;
+void	visuals() ZX_BANKED_6;
 
 char	add_line(char *fmt, char *arg);
 
@@ -194,4 +226,3 @@ void md_onsignal_autosave();
 void md_onsignal_exit();
 void md_onsignal_default();
 int md_issymlink(char *sp);
-
