@@ -392,7 +392,13 @@ picky_inven()
  *	Pick something out of a pack for a purpose
  */
 THING *
+#ifdef ZX128
+/* Callers reach this through the fixed zx_get_item() shim, which copies
+   purpose out of their bank first: entering bank 1 pages their string away. */
+zx_get_item_banked(char *purpose, int type)
+#else
 get_item(char *purpose, int type)
+#endif
 {
     THING *obj;
     char ch;

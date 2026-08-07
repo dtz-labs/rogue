@@ -822,7 +822,8 @@ coord	*find_dest(THING *tp);
 coord	*rndmove(THING *who) ZX_BANKED_0;
 
 THING	*find_obj(int y, int x) ZX_BANKED_3;
-THING	*get_item(char *purpose, int type) ZX_BANKED_1;
+THING	*get_item(char *purpose, int type) ZX_FIXED;
+THING	*zx_get_item_banked(char *purpose, int type) ZX_BANKED_1;
 THING	*leave_pack(THING *obj, bool newobj, bool all) ZX_BANKED_1;
 THING	*new_item() ZX_BANKED_7;
 THING	*new_thing() ZX_BANKED_1;
