@@ -9,9 +9,17 @@ ZCC ?= zcc
 ZCC_ENV :=
 endif
 
+ZESARUX ?= $(shell command -v zesarux 2>/dev/null || \
+	test ! -x /Applications/ZEsarUX.app/Contents/MacOS/zesarux || \
+	printf '%s' /Applications/ZEsarUX.app/Contents/MacOS/zesarux)
+ZESARUX_FLAGS ?=
+
 ROOT := ..
 BUILD := build
-TARGET := $(BUILD)/rogue-zx128.bin
+BASENAME := $(BUILD)/rogue-zx128
+MAIN_BIN := $(BASENAME).bin
+MAP := $(BASENAME).map
+TAP := $(BASENAME).tap
 
 CPPFLAGS := -DZX128 -Iinclude -I$(ROOT)
 OPT ?= -SO2 --max-allocs-per-node10000
@@ -48,9 +56,9 @@ COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
 
 $(OBJS): $(COMMON_DEPS)
 
-.PHONY: all clean layout
+.PHONY: all check-zesarux clean layout run-zesarux run-zesarux-zx128
 
-all: $(TARGET)
+all: $(TAP)
 
 $(BUILD)/fixed/%.o: $(ROOT)/%.c
 	@mkdir -p $(@D)
@@ -85,13 +93,28 @@ $(BUILD)/bank7/rooms.o: $(ROOT)/rooms.c
 		--codeseg CODE_7 --constseg RODATA_7 \
 		--dataseg DATA_7 --bssseg BSS_7 -c $< -o $@
 
-$(TARGET): $(OBJS)
+$(TAP): $(OBJS)
 	@mkdir -p $(@D)
-	$(ZCC_ENV) $(ZCC) $(LDFLAGS) -o $@ $(OBJS)
+	$(ZCC_ENV) $(ZCC) $(LDFLAGS) -o $(MAIN_BIN) $(OBJS)
+	@test -f "$@" || { echo "z88dk did not create expected TAP: $@" >&2; exit 1; }
 
-layout: $(TARGET)
-	python3 tools/check_layout.py --map $(TARGET:.bin=.map) --main-bin $(TARGET) \
+layout: $(TAP)
+	python3 tools/check_layout.py --map $(MAP) --main-bin $(MAIN_BIN) \
 		--stack-reserve 3072 --heap-reserve 3072
+
+check-zesarux:
+	@command -v "$(ZESARUX)" >/dev/null 2>&1 || { \
+		echo "ZEsarUX not found: $(ZESARUX)" >&2; \
+		echo "Set ZESARUX=/path/to/zesarux." >&2; \
+		exit 127; \
+	}
+
+run-zesarux: run-zesarux-zx128
+
+run-zesarux-zx128: $(TAP) check-zesarux
+	@echo "NOTE: this is still a ZX128 bring-up TAP; 'make layout' currently rejects it."
+	"$(ZESARUX)" --noconfigfile --machine 128k \
+		--tape "$(abspath $(TAP))" --fastautoload $(ZESARUX_FLAGS)
 
 clean:
 	rm -rf $(BUILD)

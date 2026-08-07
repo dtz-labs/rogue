@@ -60,3 +60,22 @@ make -C zx128 layout
 ```
 
 Override `Z88DK=/path/to/z88dk` when the checkout is elsewhere.
+
+Launch the generated tape as a 128K Spectrum in ZEsarUX with either target:
+
+```sh
+make -C zx128 run-zesarux-zx128
+make -C zx128 run-zesarux
+```
+
+The second name is an alias for the first.  The Makefile looks for `zesarux` on
+`PATH`, then for the standard macOS application bundle.  Override the executable
+or add emulator options when needed:
+
+```sh
+make -C zx128 run-zesarux ZESARUX=/path/to/zesarux
+make -C zx128 run-zesarux ZESARUX_FLAGS="--zoom 2"
+```
+
+Launching does not imply that the current sizing image is playable: `make
+layout` still documents the fixed-memory and bank-lifetime blockers.
