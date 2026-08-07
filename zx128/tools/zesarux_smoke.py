@@ -68,6 +68,12 @@ def command(sock: socket.socket, text: str, timeout: float = 3.0) -> str:
     return receive_prompt(sock, timeout)
 
 
+def send_physical_key(sock: socket.socket, key: int) -> None:
+    command(sock, f"send-keys-event {key} 1")
+    time.sleep(0.25)
+    command(sock, f"send-keys-event {key} 0")
+
+
 def connect(proc: subprocess.Popen[bytes], port: int, timeout: float) -> socket.socket:
     deadline = time.monotonic() + timeout
     last_error: OSError | None = None
@@ -98,8 +104,8 @@ def read_word(sock: socket.socket, address: int) -> int:
     return read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
 
 
-def write_bytes(sock: socket.socket, address: int, values: list[int]) -> None:
-    payload = " ".join(str(value) for value in values)
+def write_bytes(sock: socket.socket, address: int, *values: int) -> None:
+    payload = " ".join(str(value & 0xFF) for value in values)
     command(sock, f"write-memory {address} {payload}")
 
 
@@ -148,6 +154,17 @@ def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     raise RuntimeError(f"Rogue map/status not visible in OCR: {last!r}")
 
 
+def wait_for_ocr(sock: socket.socket, needles: tuple[str, ...], timeout: float) -> str:
+    deadline = time.monotonic() + timeout
+    last = ""
+    while time.monotonic() < deadline:
+        last = command(sock, "get-ocr")
+        if all(needle in last for needle in needles):
+            return last
+        time.sleep(0.1)
+    raise RuntimeError(f"OCR did not contain {needles!r}: {last!r}")
+
+
 def validate_screenshot(path: Path) -> None:
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline and not path.is_file():
@@ -172,6 +189,8 @@ def main() -> int:
     rendered_rows = required_symbol(symbols, "zx_rendered_rows")
     refresh_count = required_symbol(symbols, "zx_refresh_count")
     refresh_turn = required_symbol(symbols, "zx_refresh_turn")
+    viewport_first_col = required_symbol(symbols, "zx_viewport_first_col")
+    previous_message = required_symbol(symbols, "huh")
     movement_scratch = required_symbol(symbols, "nh")
     random_move_scratch = required_symbol(symbols, "rndmove_ret")
     monster_list = required_symbol(symbols, "mlist")
@@ -185,6 +204,8 @@ def main() -> int:
         ("rendered-row counter", rendered_rows),
         ("refresh counter", refresh_count),
         ("refresh-turn snapshot", refresh_turn),
+        ("viewport column", viewport_first_col),
+        ("previous-message buffer", previous_message),
         ("movement scratch", movement_scratch),
         ("random-move scratch", random_move_scratch),
         ("monster-list head", monster_list),
@@ -238,20 +259,74 @@ def main() -> int:
 
         wait_for_rendered_game(sock, min(args.timeout, 5.0))
         print("PASS renderer shows the Rogue map, hero and status line")
+        wait_for_byte(sock, viewport_first_col, 48, args.timeout, "room viewport")
+        print("PASS room-aware viewport shows the complete starting room at column 48")
 
         registers = command(sock, "get-registers")
         if not re.search(r"\bIY=5C3A\b", registers, re.IGNORECASE):
             raise RuntimeError(f"ROM system-variable base was not preserved: {registers!r}")
         print("PASS IY preserves the Spectrum ROM system-variable base")
 
+        initial_monster = read_word(sock, monster_list)
+        if not initial_monster or initial_monster >= 0xC000:
+            raise RuntimeError(
+                f"initial monster list has invalid head: 0x{initial_monster:04X}"
+            )
+        # Detach the initial monsters in emulated RAM so waiting for the
+        # wandering-monster fuse is deterministic and cannot kill the hero.
+        write_bytes(sock, monster_list, 0, 0)
+        if read_word(sock, monster_list) != 0:
+            raise RuntimeError("could not detach initial monsters")
+        print("PASS detached initial monsters for wanderer regression")
+
         if read_byte(sock, refresh_count) == 0:
             wait_for_byte_change(
                 sock, refresh_count, 0, args.timeout, "initial screen refresh"
             )
+        command(sock, "send-keys-ascii 200 83")
+        wait_for_byte(sock, last_comm, ord("S"), args.timeout, "save command")
+        save_message = wait_for_ocr(
+            sock,
+            ("Saving is not available in this", "build."),
+            args.timeout,
+        )
+        if "--More--" in save_message:
+            raise RuntimeError("two-line save message unexpectedly requested --More--")
+        print("PASS 38-character message uses two rows without --More--")
+
+        time.sleep(0.3)
+        long_message = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789TAIL"
+        write_bytes(sock, previous_message, *long_message, 0)
+        write_bytes(sock, last_comm, 16)
+        for attempt in range(2):
+            send_physical_key(sock, 97)
+            try:
+                wait_for_ocr(sock, ("--More--",), 1.0)
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
+        for attempt in range(2):
+            send_physical_key(sock, 32)
+            try:
+                paged_status = wait_for_ocr(sock, ("TAIL",), 1.0)
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
+        if "--More--" in paged_status:
+            raise RuntimeError("--More-- did not clear after Space")
+        top_line = paged_status.splitlines()[0] if paged_status.splitlines() else ""
+        if "TAIL" not in top_line:
+            raise RuntimeError(f"message continuation was lost: {paged_status!r}")
+        wait_for_byte(sock, viewport_first_col, 48, args.timeout, "restored room viewport")
+        print("PASS long message paginates through visible --More-- without loss")
+
+        time.sleep(0.3)
         before_position = read_coord(sock, player_position)
         before_physical = read_byte(sock, turn_count)
         command(sock, "send-keys-event 108 1")
-        time.sleep(0.1)
+        time.sleep(0.25)
         command(sock, "send-keys-event 108 0")
         wait_for_byte(sock, last_comm, ord("l"), args.timeout, "physical L key")
         after_physical = (before_physical + 1) & 0xFF
@@ -275,6 +350,9 @@ def main() -> int:
             "PASS emulated keyboard event decodes as ASCII 'l' and moves the hero "
             f"{before_position} -> {after_position}"
         )
+        if read_byte(sock, viewport_first_col) != 48:
+            raise RuntimeError("viewport moved while the hero remained in one room")
+        print("PASS viewport stays fixed while the hero remains inside the room")
 
         before = read_byte(sock, turn_count)
         command(sock, "send-keys-ascii 200 46")
@@ -295,11 +373,33 @@ def main() -> int:
             raise RuntimeError(f"partial refresh drew {rows} rows after one turn")
         print(f"PASS partial refresh drew {rows}/24 rows after one turn")
 
-        # Remove the level's original monsters so the wandering-monster fuse
-        # can run without combat cancelling the wait.
-        write_bytes(sock, monster_list, [0, 0])
-        if read_word(sock, monster_list) != 0:
-            raise RuntimeError("could not detach initial monsters")
+        # The fixed-seed starting room has its left door at x=53.  Walk to the
+        # first corridor dead-zone column one key at a time so each ROM key
+        # release is observed, then verify the camera jumps by eight columns.
+        for expected_x in range(after_position[0] - 1, 51, -1):
+            before = read_byte(sock, turn_count)
+            send_physical_key(sock, 104)
+            after = (before + 1) & 0xFF
+            wait_for_byte(sock, turn_count, after, args.timeout, "corridor walk turn")
+            wait_for_byte(sock, refresh_turn, after, args.timeout, "corridor walk refresh")
+            position = read_coord(sock, player_position)
+            if position[0] != expected_x:
+                raise RuntimeError(
+                    f"corridor walk did not reach x={expected_x}: {position}"
+                )
+        if read_byte(sock, viewport_first_col) != 48:
+            raise RuntimeError("viewport moved before the corridor dead-zone")
+
+        before = read_byte(sock, turn_count)
+        send_physical_key(sock, 104)
+        after = (before + 1) & 0xFF
+        wait_for_byte(sock, turn_count, after, args.timeout, "viewport-step turn")
+        wait_for_byte(sock, refresh_turn, after, args.timeout, "viewport-step refresh")
+        corridor_position = read_coord(sock, player_position)
+        if corridor_position != (51, after_position[1]):
+            raise RuntimeError(f"corridor step reached {corridor_position}, expected x=51")
+        wait_for_byte(sock, viewport_first_col, 40, args.timeout, "corridor viewport")
+        print("PASS corridor viewport advances by an eight-column step")
 
         wandering_monster = 0
         wanderer_turns = 0
@@ -328,7 +428,7 @@ def main() -> int:
                 f"wandering monster did not appear within {wanderer_turns} turns"
             )
 
-        if wandering_monster >= 0xC000:
+        if not wandering_monster or wandering_monster >= 0xC000:
             raise RuntimeError(
                 "wandering monster is not in fixed memory: "
                 f"0x{wandering_monster:04X}"

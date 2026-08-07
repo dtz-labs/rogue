@@ -6,26 +6,28 @@
 
 #define ZX_SCREEN_ROWS 24
 #define ZX_SCREEN_COLS 80
-#define ZX_VISIBLE_COLS 32
+#define ZX_VISIBLE_COLS ZX_VIEWPORT_COLS
 #define ZX_FORMAT_SIZE 160
-#define ZX_NO_VIEWPORT 0xffU
 
 static WINDOW screen_window;
 static WINDOW scratch_window;
 static unsigned char curses_ended;
 static unsigned char dirty_rows[ZX_SCREEN_ROWS];
-static unsigned char physical_first_col;
+static unsigned char message_second_line;
+volatile unsigned char zx_viewport_first_col;
 volatile unsigned char zx_rendered_rows;
 volatile unsigned char zx_refresh_count;
 volatile unsigned char zx_refresh_turn;
 
 extern volatile unsigned char zx_turn_count;
+extern int mpos;
 
 void zx_screen_set(unsigned int index, unsigned char value);
 unsigned char zx_screen_get(unsigned int index);
 void zx_screen_fill(unsigned int index, unsigned int count,
                     unsigned char value);
 void zx_render_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
+void zx_render_message_line(void) ZX_BANKED_6;
 
 WINDOW *stdscr = &screen_window;
 WINDOW *curscr = &screen_window;
@@ -54,28 +56,17 @@ static void render_physical_screen(void)
 {
     unsigned char row;
     unsigned char first_col;
+    unsigned char second_line;
 
     zx_rendered_rows = 0;
 
-    first_col = physical_first_col;
-    if (first_col == ZX_NO_VIEWPORT) {
-        first_col = screen_window._curx > ZX_VISIBLE_COLS / 2U
-            ? screen_window._curx - ZX_VISIBLE_COLS / 2U : 0;
-    } else if (screen_window._cury > 0 &&
-               screen_window._cury < ZX_SCREEN_ROWS - 1U) {
-        if (screen_window._curx < first_col)
-            first_col = screen_window._curx;
-        else if (screen_window._curx >= first_col + ZX_VISIBLE_COLS)
-            first_col = screen_window._curx - ZX_VISIBLE_COLS + 1U;
-    }
-    if (first_col > ZX_SCREEN_COLS - ZX_VISIBLE_COLS)
-        first_col = ZX_SCREEN_COLS - ZX_VISIBLE_COLS;
-
-    if (first_col != physical_first_col) {
-        for (row = 1; row < ZX_SCREEN_ROWS - 1U; ++row)
-            mark_dirty(row);
-        physical_first_col = first_col;
-    }
+    first_col = zx_viewport_first_col == ZX_VIEWPORT_NONE
+        ? 0 : zx_viewport_first_col;
+    second_line = mpos > ZX_VISIBLE_COLS;
+    if (second_line != message_second_line ||
+        (second_line && dirty_rows[0]))
+        mark_dirty(1);
+    message_second_line = second_line;
 
     for (row = 0; row < ZX_SCREEN_ROWS; ++row) {
         unsigned char row_first = (row == 0 || row == ZX_SCREEN_ROWS - 1)
@@ -84,8 +75,22 @@ static void render_physical_screen(void)
             continue;
         dirty_rows[row] = FALSE;
         ++zx_rendered_rows;
-        zx_render_row(row, row_first);
+        if (row == 1 && second_line)
+            zx_render_message_line();
+        else
+            zx_render_row(row, row_first);
     }
+}
+
+void zx_viewport_set(unsigned char first_col)
+{
+    unsigned char row;
+
+    if (first_col == zx_viewport_first_col)
+        return;
+    zx_viewport_first_col = first_col;
+    for (row = 1; row < ZX_SCREEN_ROWS - 1U; ++row)
+        mark_dirty(row);
 }
 
 WINDOW *initscr(void)
@@ -94,7 +99,7 @@ WINDOW *initscr(void)
     screen_window._maxy = ZX_SCREEN_ROWS;
     screen_window._maxx = ZX_SCREEN_COLS;
     curses_ended = FALSE;
-    physical_first_col = ZX_NO_VIEWPORT;
+    zx_viewport_first_col = ZX_VIEWPORT_NONE;
     erase();
     return stdscr;
 }
@@ -246,7 +251,7 @@ int erase(void) { return werase(stdscr); }
 int clear(void)
 {
     /* A full-screen redraw starts a new view, not the old dungeon viewport. */
-    physical_first_col = ZX_NO_VIEWPORT;
+    zx_viewport_first_col = ZX_VIEWPORT_NONE;
     return erase();
 }
 int wclear(WINDOW *win) { return werase(win); }

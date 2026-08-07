@@ -58,7 +58,12 @@ command()
 	lastscore = purse;
 	move(hero.y, hero.x);
 	if (!((running || count) && jump))
+	{
+#ifdef ZX128
+	    zx_update_viewport();
+#endif
 	    refresh();			/* Draw screen */
+	}
 	take = 0;
 	after = TRUE;
 	/*

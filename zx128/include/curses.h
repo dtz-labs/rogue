@@ -23,6 +23,9 @@ typedef struct zx_window {
 #define OK 0
 #define A_CHARTEXT 0xff
 
+#define ZX_VIEWPORT_COLS 32
+#define ZX_VIEWPORT_NONE 0xffU
+
 #define KEY_LEFT 256
 #define KEY_RIGHT 257
 #define KEY_UP 258
@@ -42,6 +45,7 @@ extern WINDOW *stdscr;
 extern WINDOW *curscr;
 extern int LINES;
 extern int COLS;
+extern volatile unsigned char zx_viewport_first_col;
 
 #define getyx(win, y, x) do { (y) = (win)->_cury; (x) = (win)->_curx; } while (0)
 
@@ -98,5 +102,6 @@ int baudrate(void);
 char *unctrl(int ch);
 int erasechar(void);
 int killchar(void);
+void zx_viewport_set(unsigned char first_col);
 
 #endif

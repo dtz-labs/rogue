@@ -595,7 +595,7 @@ void	do_pot(int type, bool knowit);
 void	do_rooms();
 void	do_run(char ch);
 void	do_zap() ZX_BANKED_4;
-void	doadd(char *fmt, va_list args);
+int	doadd(char *fmt, va_list args);
 void	door(struct room *rm, coord *cp);
 void	door_open(struct room *rp) ZX_BANKED_0;
 void	drain();
@@ -604,7 +604,7 @@ void	drop() ZX_BANKED_1;
 void	eat() ZX_BANKED_3;
 size_t  encread(char *start, size_t size, FILE *inf);
 size_t	encwrite(char *start, size_t size, FILE *outf);
-int	endmsg();
+int	endmsg(void) ZX_BANKED_6;
 void	enter_room(coord *cp) ZX_BANKED_7;
 void	erase_lamp(coord *pos, struct room *rp) ZX_BANKED_3;
 int	exp_add(THING *tp);
@@ -724,6 +724,7 @@ void	whatis(bool insist, int type) ZX_BANKED_3;
 void	wield() ZX_BANKED_4;
 
 #ifdef ZX128
+void zx_update_viewport(void) ZX_BANKED_6;
 void zx_cb_runners(int arg);
 void zx_cb_doctor(int arg);
 void zx_cb_swander(int arg);

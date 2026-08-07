@@ -39,3 +39,13 @@ void zx_render_row(unsigned char row, unsigned char first_col)
     for (col = 0; col < ZX_VISIBLE_COLS; ++col)
         draw_physical_cell(row, col, physical_row[col]);
 }
+
+void zx_render_message_line(void)
+{
+    unsigned char physical_row[ZX_VISIBLE_COLS];
+    unsigned char col;
+
+    zx_screen_copy(ZX_VISIBLE_COLS, physical_row, ZX_VISIBLE_COLS);
+    for (col = 0; col < ZX_VISIBLE_COLS; ++col)
+        draw_physical_cell(1, col, physical_row[col]);
+}

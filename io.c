@@ -9,15 +9,29 @@
 #include <ctype.h>
 #include <string.h>
 #include "rogue.h"
+#ifdef ZX128
+#include "zx_message.h"
+#endif
 
 /*
  * msg:
  *	Display a message at the top of the screen.
  */
+#ifdef ZX128
+#define MAXMSG ZX_MSG_MAX
+#define msgbuf zx_msgbuf
+#define newpos zx_msg_newpos
+#else
 #define MAXMSG	(NUMCOLS - sizeof "--More--")
+#endif
 
+#ifdef ZX128
+char zx_msgbuf[MAXMSG+1];
+int zx_msg_newpos;
+#else
 static char msgbuf[2*MAXMSG+1];
 static int newpos = 0;
+#endif
 
 /* VARARGS1 */
 int
@@ -37,9 +51,13 @@ msg(char *fmt, ...)
     }
     /*
      * otherwise add to the message and flush it out
-     */
+    */
     va_start(args, fmt);
-    doadd(fmt, args);
+    if (doadd(fmt, args) == ESCAPE)
+    {
+	va_end(args);
+	return ESCAPE;
+    }
     va_end(args);
     return endmsg();
 }
@@ -64,6 +82,7 @@ addmsg(char *fmt, ...)
  *	Display a new msg (giving him a chance to see the previous one
  *	if it is up there with the --More--)
  */
+#ifndef ZX128
 int
 endmsg()
 {
@@ -71,10 +90,37 @@ endmsg()
 
     if (save_msg)
 	strcpy(huh, msgbuf);
+    /*
+     * All messages should start with uppercase, except ones that
+     * start with a pack addressing character
+     */
+    if (islower(msgbuf[0]) && !lower_msg && msgbuf[1] != ')')
+	msgbuf[0] = (char) toupper(msgbuf[0]);
+#ifdef ZX128
+    /* A second short message can use the free physical message row. */
+    if (mpos && mpos <= ZX_MSG_COLS && newpos &&
+	newpos <= ZX_MSG_COLS - (sizeof "--More--" - 1))
+    {
+	mvaddstr(0, ZX_MSG_COLS, msgbuf);
+	clrtoeol();
+	mpos = ZX_MSG_COLS + newpos;
+	newpos = 0;
+	msgbuf[0] = '\0';
+	refresh();
+	return ~ESCAPE;
+    }
+#endif
     if (mpos)
     {
 	look(FALSE);
+#ifdef ZX128
+	if (mpos > ZX_MSG_PAGE_COLS - (sizeof "--More--" - 1))
+	    mpos = ZX_MSG_PAGE_COLS - (sizeof "--More--" - 1);
+#endif
 	mvaddstr(0, mpos, "--More--");
+#ifdef ZX128
+	mpos += sizeof "--More--" - 1;
+#endif
 	refresh();
 	if (!msg_esc)
 	    wait_for(' ');
@@ -91,12 +137,6 @@ endmsg()
 		}
 	}
     }
-    /*
-     * All messages should start with uppercase, except ones that
-     * start with a pack addressing character
-     */
-    if (islower(msgbuf[0]) && !lower_msg && msgbuf[1] != ')')
-	msgbuf[0] = (char) toupper(msgbuf[0]);
     mvaddstr(0, 0, msgbuf);
     clrtoeol();
     mpos = newpos;
@@ -105,24 +145,42 @@ endmsg()
     refresh();
     return ~ESCAPE;
 }
+#endif
 
 /*
  * doadd:
  *	Perform an add onto the message buffer
  */
-void
+int
 doadd(char *fmt, va_list args)
 {
     static char buf[MAXSTR];
+#ifdef ZX128
+    char *src;
+#endif
 
     /*
      * Do the printf into buf
      */
+#ifdef ZX128
+    vsnprintf(buf, sizeof buf, fmt, args);
+    src = buf;
+    while (*src)
+    {
+	if (newpos >= MAXMSG)
+	    if (endmsg() == ESCAPE)
+		return ESCAPE;
+	msgbuf[newpos++] = *src++;
+    }
+    msgbuf[newpos] = '\0';
+#else
     vsprintf(buf, fmt, args);
     if (strlen(buf) + newpos >= MAXMSG)
         endmsg(); 
     strcat(msgbuf, buf);
     newpos = (int) strlen(msgbuf);
+#endif
+    return ~ESCAPE;
 }
 
 /*
@@ -269,9 +327,18 @@ show_win(char *message)
     wmove(win, 0, 0);
     waddstr(win, message);
     touchwin(win);
+#ifdef ZX128
+    /* Let the renderer put columns 32..63 on the second physical row. */
+    mpos = win->_curx;
+#endif
     wmove(win, hero.y, hero.x);
     wrefresh(win);
     wait_for(' ');
+#ifdef ZX128
+    wmove(win, 0, 0);
+    wclrtoeol(win);
+    mpos = 0;
+#endif
     clearok(curscr, TRUE);
     touchwin(stdscr);
 }

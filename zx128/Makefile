@@ -46,7 +46,7 @@ BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
 BANK3_NAMES := init misc monsters wizard vers rip_zx
 BANK4_NAMES := potions scrolls sticks weapons
-BANK6_NAMES := chase fight daemons renderer
+BANK6_NAMES := chase fight daemons renderer viewport message
 BANK7_NAMES := new_level rooms passages daemon list
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
@@ -62,7 +62,7 @@ OBJS := $(FIXED_OBJS) $(BANK0_OBJS) $(BANK1_OBJS) $(BANK3_OBJS) \
 	$(BUILD)/bank0/bank_storage.o $(BUILD)/bank1/bank_storage.o \
 	$(BUILD)/bank3/bank_storage.o $(BUILD)/bank4/bank_storage.o
 COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
-	include/curses.h include/zx_banking.h
+	include/curses.h include/zx_banking.h include/zx_message.h
 
 $(OBJS): $(COMMON_DEPS)
 
