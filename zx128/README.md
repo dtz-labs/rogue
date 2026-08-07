@@ -59,7 +59,13 @@ make -C zx128
 make -C zx128 layout
 ```
 
-Override `Z88DK=/path/to/z88dk` when the checkout is elsewhere.
+Override `Z88DK=/path/to/z88dk` when the checkout is elsewhere.  Relative
+`Z88DK` values are resolved from the repository root rather than from the
+`zx128` directory entered by `make -C`, so a sibling checkout works as expected:
+
+```sh
+make -C zx128 run-zesarux Z88DK=../z88dk
+```
 
 Launch the generated tape as a 128K Spectrum in ZEsarUX with either target:
 

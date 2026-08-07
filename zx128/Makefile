@@ -1,9 +1,11 @@
-Z88DK ?=
 .DEFAULT_GOAL := all
+ROOT := $(abspath ..)
+Z88DK ?=
 
 ifneq ($(strip $(Z88DK)),)
-ZCC := $(Z88DK)/bin/zcc
-ZCC_ENV := PATH=$(Z88DK)/bin:/usr/bin:/bin ZCCCFG=$(Z88DK)/lib/config
+Z88DK_PREFIX := $(if $(filter /%,$(Z88DK)),$(abspath $(Z88DK)),$(abspath $(ROOT)/$(Z88DK)))
+ZCC := $(Z88DK_PREFIX)/bin/zcc
+ZCC_ENV := PATH=$(Z88DK_PREFIX)/bin:/usr/bin:/bin ZCCCFG=$(Z88DK_PREFIX)/lib/config
 else
 ZCC ?= zcc
 ZCC_ENV :=
@@ -14,7 +16,6 @@ ZESARUX ?= $(shell command -v zesarux 2>/dev/null || \
 	printf '%s' /Applications/ZEsarUX.app/Contents/MacOS/zesarux)
 ZESARUX_FLAGS ?=
 
-ROOT := ..
 BUILD := build
 BASENAME := $(BUILD)/rogue-zx128
 MAIN_BIN := $(BASENAME).bin
