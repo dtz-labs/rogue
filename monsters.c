@@ -119,7 +119,7 @@ void
 wanderer()
 {
     THING *tp;
-    static coord cp;
+    coord cp;
 
     tp = new_item();
     do

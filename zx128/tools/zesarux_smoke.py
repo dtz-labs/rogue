@@ -93,6 +93,15 @@ def read_byte(sock: socket.socket, address: int) -> int:
     raise RuntimeError(f"could not parse byte at 0x{address:04X}: {response!r}")
 
 
+def read_word(sock: socket.socket, address: int) -> int:
+    return read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
+
+
+def write_bytes(sock: socket.socket, address: int, values: list[int]) -> None:
+    payload = " ".join(str(value) for value in values)
+    command(sock, f"write-memory {address} {payload}")
+
+
 def read_coord(sock: socket.socket, address: int) -> tuple[int, int]:
     x = read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
     y = read_byte(sock, address + 2) | (read_byte(sock, address + 3) << 8)
@@ -164,6 +173,7 @@ def main() -> int:
     refresh_turn = required_symbol(symbols, "zx_refresh_turn")
     movement_scratch = required_symbol(symbols, "nh")
     random_move_scratch = required_symbol(symbols, "rndmove_ret")
+    monster_list = required_symbol(symbols, "mlist")
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + 4
     origin = required_symbol(symbols, "CRT_ORG_CODE")
@@ -176,6 +186,7 @@ def main() -> int:
         ("refresh-turn snapshot", refresh_turn),
         ("movement scratch", movement_scratch),
         ("random-move scratch", random_move_scratch),
+        ("monster list", monster_list),
         ("player position", player_position),
     ):
         if address >= 0xC000:
@@ -286,6 +297,31 @@ def main() -> int:
         command(sock, f"save-screen {args.screenshot.resolve()}")
         validate_screenshot(args.screenshot)
         print(f"PASS captured 256x192 screen: {args.screenshot}")
+
+        # Remove the level's original monsters so a repeated search command can
+        # reach the deterministic wandering-monster fuse without combat
+        # cancelling the count.  wanderer() crosses banks 3, 7 and 6 while
+        # passing its candidate coordinate, which previously corrupted it.
+        write_bytes(sock, monster_list, [0, 0])
+        before_wanderer = read_byte(sock, turn_count)
+        command(sock, "send-keys-ascii 100 57 57 115")  # 99s
+        after_wanderer = (before_wanderer + 99) & 0xFF
+        wait_for_byte(
+            sock,
+            turn_count,
+            after_wanderer,
+            args.timeout,
+            "wandering-monster search count",
+        )
+        if read_word(sock, monster_list) == 0:
+            raise RuntimeError("wandering-monster fuse did not create a monster")
+        ocr = command(sock, "get-ocr")
+        if "bizarre place" in ocr.lower():
+            raise RuntimeError(f"wandering monster corrupted its coordinate: {ocr!r}")
+        print(
+            "PASS wandering monster survives banked coordinate handoff "
+            f"({before_wanderer} -> {after_wanderer})"
+        )
 
         sock.sendall(b"exit-emulator\n")
         sock.close()
