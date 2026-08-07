@@ -4,6 +4,20 @@ This directory is the deliberately conservative first stage of a z88dk port.
 It builds the original game modules into Spectrum 128K RAM banks and produces
 a bootable TAP plus a checked linker map.
 
+## Play in a browser
+
+**[▶ Play the latest tested ZX128 build](https://dtz-labs.github.io/rogue/)**
+
+The GitHub Pages player embeds JSSpeccy 3.2 as a Spectrum 128K and opens the
+same `rogue-zx128.tap` artifact that passed the linker-layout checks and the
+ZEsarUX smoke test. Click the player's **▶** button, press **SPACE** on the
+in-game key reference, type a hero name, and press **Enter**.
+
+The TAP can be downloaded without the embedded emulator from
+[dtz-labs.github.io/rogue/rogue-zx128.tap](https://dtz-labs.github.io/rogue/rogue-zx128.tap).
+JSSpeccy is distributed separately under GPL-3.0; its licence and exact source
+link are included in the deployed Pages artifact.
+
 Current scope:
 
 - upstream baseline: `modern-rogue` at commit

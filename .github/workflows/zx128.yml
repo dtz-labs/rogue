@@ -17,6 +17,9 @@ env:
   ZESARUX_VERSION: "13.0"
   ZESARUX_URL: https://github.com/chernandezba/zesarux/releases/download/ZEsarUX-13.0/ZEsarUX_linux-13.0-ubuntu24_x86_64.tar.gz
   ZESARUX_SHA256: 596388df21388fd6c485dab23f7d157ef5b1753f872e63ed77574c9e8c642d55
+  JSSPECCY_VERSION: "3.2"
+  JSSPECCY_URL: https://github.com/gasman/jsspeccy3/releases/download/v3.2/jsspeccy-3.2.zip
+  JSSPECCY_SHA256: 5434b5565da96a05089491f722c8fbcd8b3b70ab0277746309d2ee1db1fdbcb9
 
 jobs:
   build:
@@ -116,3 +119,87 @@ jobs:
           path: zx128/build/rogue-zx128-smoke.pbm
           if-no-files-found: ignore
           retention-days: 14
+
+  pages:
+    name: Deploy browser player
+    needs: [build, smoke]
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'push') &&
+      (github.ref == 'refs/heads/codex/zx128-port' ||
+       github.ref == 'refs/heads/master')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download tested ZX128 build
+        uses: actions/download-artifact@v8
+        with:
+          name: zx128-build
+          path: zx128/build
+
+      - name: Download pinned JSSpeccy release
+        run: |
+          archive="$RUNNER_TEMP/jsspeccy-$JSSPECCY_VERSION.zip"
+          emulator_root="$RUNNER_TEMP/jsspeccy-$JSSPECCY_VERSION"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$archive" "$JSSPECCY_URL"
+          echo "$JSSPECCY_SHA256  $archive" | sha256sum --check --strict
+          mkdir -p "$emulator_root"
+          unzip -q "$archive" -d "$emulator_root"
+
+      - name: Assemble Pages site and licence notices
+        run: |
+          emulator_root="$RUNNER_TEMP/jsspeccy-$JSSPECCY_VERSION"
+          mkdir -p _site
+          cp -R zx128/site/. _site/
+          cp -R "$emulator_root/jsspeccy" _site/jsspeccy
+          cp zx128/build/rogue-zx128.tap _site/rogue-zx128.tap
+          cp LICENSE.TXT _site/LICENSE-ROGUE.txt
+          cp "$emulator_root/COPYING" _site/COPYING-JSSPECCY3.txt
+          cp "$emulator_root/README.md" _site/README-JSSPECCY3.md
+          find _site/jsspeccy -name .DS_Store -delete
+          printf '%s\n' \
+            "JSSpeccy 3.2 corresponding source:" \
+            "https://github.com/gasman/jsspeccy3/tree/1f761ca2c17b6a6fdf1b7616e091a2b49b45a49f" \
+            > _site/SOURCE-JSSPECCY3.txt
+
+      - name: Validate Pages artifact
+        run: |
+          test -s _site/index.html
+          test -s _site/rogue-zx128.tap
+          test -s _site/jsspeccy/jsspeccy.js
+          test -s _site/jsspeccy/jsspeccy-worker.js
+          test -s _site/jsspeccy/jsspeccy-core.wasm
+          test -s _site/jsspeccy/jsspeccy.js.LICENSE.txt
+          test -s _site/jsspeccy/roms/128-0.rom
+          test -s _site/jsspeccy/roms/128-1.rom
+          test -s _site/jsspeccy/tapeloaders/tape_128.szx
+          test -s _site/LICENSE-ROGUE.txt
+          test -s _site/COPYING-JSSPECCY3.txt
+          test -s _site/README-JSSPECCY3.md
+          test -s _site/SOURCE-JSSPECCY3.txt
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

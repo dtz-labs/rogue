@@ -1,707 +1,110 @@
-# Rogue: Exploring the Dungeons of Doom
+# Rogue 5.4.4 for ZX Spectrum 128K
 
+[![ZX128 build and smoke](https://github.com/dtz-labs/rogue/actions/workflows/zx128.yml/badge.svg?branch=codex%2Fzx128-port)](https://github.com/dtz-labs/rogue/actions/workflows/zx128.yml)
 [![License](https://img.shields.io/badge/license-BSD-blue.svg)](LICENSE.TXT)
 
-**Rogue** is the original graphical dungeon-crawling adventure game that spawned an entire genre. This is version 5.4.4, a classic roguelike where you explore procedurally generated dungeons, fight monsters, collect treasure, and attempt to retrieve the Amulet of Yendor.
+## [▶ Play Rogue ZX128 in your browser](https://dtz-labs.github.io/rogue/)
 
-**Original Authors:** Michael Toy, Ken Arnold, and Glenn Wichman (1980-1983, 1985, 1999)
+This branch ports the classic Rogue 5.4.4 dungeon crawler to the ZX Spectrum
+128K. The browser player always receives the TAP that passed the bank-layout
+checks and the real-emulator smoke test in CI. Click the player's **▶** button,
+press **SPACE**, enter your hero's name, and press **Enter**.
 
----
+The generated TAP can also be downloaded directly from
+[dtz-labs.github.io/rogue/rogue-zx128.tap](https://dtz-labs.github.io/rogue/rogue-zx128.tap)
+and run on a Spectrum 128K or a compatible emulator.
 
-## Table of Contents
+## The port
 
-- [Quick Start](#quick-start)
-- [Prerequisites](#prerequisites)
-- [Building from Source](#building-from-source)
-- [Running the Game](#running-the-game)
-- [Project Structure](#project-structure)
-- [Development Guide](#development-guide)
-- [Contributing](#contributing)
-- [Troubleshooting](#troubleshooting)
-- [Resources](#resources)
+The original 80x24 dungeon is retained in banked RAM and displayed through a
+32-column Spectrum viewport. Code, mutable data, the dungeon map, inventory,
+and renderer are split across the 128K machine's pageable RAM banks. The port
+uses the Spectrum ROM keyboard and font, and produces a standard multi-block
+TAP with a BASIC loader.
 
----
+Current highlights include:
 
-## Quick Start
+- procedural rooms, passages, mazes, monsters, combat, objects, and dungeon
+  progression;
+- an eight-column stepped viewport which avoids unnecessary redraws inside
+  rooms;
+- full-screen inventory, help, option, death, victory, and restart flows;
+- a cold in-program restart after death, victory, or quit;
+- pinned z88dk builds, linker-map guards, and an automated ZEsarUX gameplay
+  smoke test in GitHub Actions.
 
-**Before you begin**: Make sure you have installed all [required prerequisites](#prerequisites) (C compiler, make, and ncurses development library).
+Save files, persistent score files, shell escape, and Unix account integration
+are intentionally unavailable on the Spectrum build.
 
-```bash
-# Configure and build
-./configure
-make
+## Controls
 
-# Run the game
-./rogue
+The startup screen contains an on-machine reference. The essential keys are:
+
+- `h j k l`, `y u b n` — move in eight directions;
+- `SHIFT` + direction — run;
+- `i` — inventory, `,` — pick up, `d` — drop;
+- `q` — quaff, `r` — read, `e` — eat;
+- `w` — wield, `W` — wear, `T` — take armour off;
+- `>` / `<` — stairs, `.` — rest, `s` — search;
+- `?` — complete command help, `o` — options, `Q` — quit.
+
+## Build and test
+
+A z88dk checkout or installation is required. Build the TAP and verify the
+fixed and banked memory layout with:
+
+```sh
+make -C zx128
+make -C zx128 layout
 ```
 
-**Note**: The executable name defaults to `rogue`, but may be different if configured with `--with-program-name`. Check the output of `make` to see the actual executable name.
+If z88dk is in a sibling checkout:
 
-**Note**: If you encounter compilation errors, especially related to ncurses compatibility, see [BUILD_ISSUES.md](BUILD_ISSUES.md) for known issues and workarounds.
-
-**Troubleshooting**: If `./configure` fails with "curses library not found", you need to install the ncurses development package (see [Prerequisites](#prerequisites)).
-
----
-
-## Prerequisites
-
-### Required
-
-Before building, you need:
-
-1. **C Compiler**: GCC or Clang (C89/C90 compatible)
-   - **Linux**: Usually pre-installed, or `sudo apt-get install build-essential` (Debian/Ubuntu)
-   - **Linux**: `sudo yum groupinstall "Development Tools"` (RHEL/CentOS/Fedora)
-   - **macOS**: Included with Xcode Command Line Tools (`xcode-select --install`)
-   - **FreeBSD**: `pkg install gcc` or `pkg install clang`
-
-2. **make**: Build automation tool
-   - **Linux**: Usually pre-installed, or `sudo apt-get install build-essential` (Debian/Ubuntu)
-   - **Linux**: `sudo yum groupinstall "Development Tools"` (RHEL/CentOS/Fedora)
-   - **macOS**: Included with Xcode Command Line Tools (`xcode-select --install`)
-   - **FreeBSD**: `pkg install gmake` (or use `gmake` instead of `make`)
-
-3. **ncurses development library**: For terminal-based graphics (includes headers and library)
-   - **Linux (Debian/Ubuntu)**: `sudo apt-get install libncurses-dev` or `libncurses5-dev` (for older systems)
-   - **Linux (RHEL/CentOS)**: `sudo yum install ncurses-devel`
-   - **Linux (Fedora)**: `sudo dnf install ncurses-devel`
-   - **macOS**: `brew install ncurses` (Homebrew)
-   - **FreeBSD**: `pkg install ncurses`
-
-**Important**: You need the **development** package (with `-dev` or `-devel` in the name), not just the runtime library. The development package includes the header files (`curses.h`) required for compilation.
-
-### Optional (for building from source)
-
-- **Autotools**: autoconf, automake, m4 (needed if `configure` script doesn't exist)
-  - **Linux**: `sudo apt-get install autoconf automake m4` (Debian/Ubuntu)
-  - **Linux**: `sudo yum install autoconf automake m4` (RHEL/CentOS/Fedora)
-  - **macOS**: Usually pre-installed with Xcode Command Line Tools, or `brew install autoconf automake`
-  - **FreeBSD**: `pkg install autoconf automake m4`
-  - **Note**: If the `configure` script already exists in the repository, you don't need these tools
-
-### Optional (for building documentation)
-
-- **Documentation tools**: groff/nroff, tbl, colcrt, sed (for generating man pages and docs)
-  - **Linux**: Usually pre-installed, or `sudo apt-get install groff` (Debian/Ubuntu)
-  - **macOS**: Usually pre-installed
-  - **Note**: Documentation can be built later with `make` if these tools are available
-  - **Note**: Generated documentation (man pages, HTML, etc.) is adapted to match the actual codebase outcomes and build configuration (e.g., executable name, scoreboard file location)
-
-### Platform Support
-
-This codebase supports multiple platforms:
-- **Unix-like systems** (Linux, macOS, FreeBSD, etc.)
-- **Windows** (via Visual Studio project files or MinGW/MSYS2)
-- **DOS** (DJGPP)
-- **Cygwin**
-
----
-
-## Building from Source
-
-### Standard Build (Recommended)
-
-The project uses Autotools for configuration. The build process depends on whether the `configure` script already exists:
-
-**If `configure` script exists** (most common case):
-```bash
-# Configure the build system
-./configure
-
-# Compile
-make
-
-# Optional: Install system-wide (requires root)
-sudo make install
+```sh
+make -C zx128 Z88DK=../z88dk
 ```
 
-**If `configure` script does NOT exist** (e.g., fresh git clone without generated files):
-```bash
-# Generate configure script (requires autoconf, automake, m4)
-autoreconf -fiv
+Run it locally in ZEsarUX:
 
-# Configure the build system
-./configure
-
-# Compile
-make
-
-# Optional: Install system-wide (requires root)
-sudo make install
+```sh
+make -C zx128 run-zesarux-zx128
 ```
 
-**Note**: Most source distributions include the `configure` script, so you typically only need `autoreconf` if you're building directly from a git repository that doesn't include generated files.
+Run the automated emulator smoke test:
 
-**Note**: The executable name and other build outputs are determined by the `configure` script based on the codebase configuration. If you're using `Makefile.std` directly (manual build), the default executable name is `rogue54`, whereas `configure` defaults to `rogue`. Always check the actual output of your build process to confirm the executable name.
-
-### Configure Options
-
-The `configure` script supports several options:
-
-```bash
-# Enable wizard mode (debug/cheat mode)
-./configure --enable-wizardmode
-
-# Set custom scoreboard file location
-./configure --enable-scorefile=/path/to/scoreboard.scr
-
-# Disable scoreboard
-./configure --enable-scorefile=no
-
-# Set custom program name
-./configure --with-program-name=myrogue
-
-# Install as setgid (for shared scoreboard)
-./configure --enable-setgid=games
-
-# See all options
-./configure --help
+```sh
+make -C zx128 smoke-zesarux Z88DK=../z88dk
 ```
 
-### Manual Build (Without Autotools)
+See [zx128/README.md](zx128/README.md) for the bank layout, build overrides,
+testing details, and patch-stack policy.
 
-If you prefer to build manually or the configure script fails:
+## Upstream relationship
 
-**Option 1: Using Makefile.std**
-```bash
-# Build using the standard Makefile
-make -f Makefile.std
+This is a deliberately small ZX-only patch stack over the `modern-rogue`
+baseline at commit `546829b745ab8b1bca39b14f8bac5defd6c13fac`.
 
-# Note: This creates 'rogue54' by default (see Makefile.std to change)
-```
+The Unix build documentation from that exact baseline remains available in the
+[upstream README pinned to commit 546829b](https://github.com/Davidslv/rogue/blob/546829b745ab8b1bca39b14f8bac5defd6c13fac/README.md).
+The complete pinned source tree is available
+[upstream](https://github.com/Davidslv/rogue/tree/546829b745ab8b1bca39b14f8bac5defd6c13fac).
 
-**Option 2: Direct compilation**
-```bash
-# Compile directly (may need additional defines)
-gcc -O2 -o rogue *.c -lcurses
+ZX-specific implementation and tooling live under `zx128/`; shared source
+changes are guarded by `ZX128` wherever practical so the normal Unix target
+remains a regression target.
 
-# Or with more defines (see Makefile.std for full list):
-gcc -O2 -DALLSCORES -DSCOREFILE=\"rogue.scr\" -DLOCKFILE=\"rogue.lck\" -o rogue *.c -lcurses
-```
+## Browser emulator
 
-**Note**:
-- Manual builds may require additional defines. See `Makefile.std` for reference.
-- The executable name may differ (`rogue` vs `rogue54` depending on build method).
-- You may need to adjust include paths if ncurses is in a non-standard location.
+The web player embeds
+[JSSpeccy 3.2](https://github.com/gasman/jsspeccy3/releases/tag/v3.2),
+licensed separately under GPL-3.0. The emulator, its licence and corresponding
+source link are packaged alongside the BSD-licensed Rogue TAP during the Pages
+deployment; emulator binaries are not vendored in this repository.
 
-### Windows Build
+## License and credits
 
-#### Using Visual Studio
+Rogue was written by Michael Toy, Ken Arnold, and Glenn Wichman. This source and
+the generated TAP are distributed under the BSD-style terms in
+[LICENSE.TXT](LICENSE.TXT).
 
-1. **Install PDCurses**:
-   - Download PDCurses from https://pdcurses.org/
-   - Extract to a directory (e.g., `C:\pdcurses`)
-   - Build PDCurses library following its instructions
-
-2. **Configure Visual Studio project**:
-   - Open `rogue54.sln` in Visual Studio
-   - Update include/library paths in project settings to point to your PDCurses installation
-   - Ensure PDCurses library is linked (check project properties → Linker → Input)
-
-3. **Build the solution**: Build → Build Solution (or press F7)
-
-**Alternative**: If PDCurses is in a peer directory (`../pdcurses/`), the project may work without modification.
-
-#### Using MinGW/MSYS2
-
-```bash
-# Install ncurses via MSYS2
-pacman -S mingw-w64-x86_64-ncurses
-
-# Configure and build
-./configure
-make
-```
-
-**Note**: For MinGW/MSYS2, you may need to use `mingw32-make` instead of `make` depending on your installation.
-
----
-
-## Running the Game
-
-### Basic Usage
-
-```bash
-# Start a new game
-./rogue
-
-# Restore from a saved game
-./rogue ~/rogue.save
-
-# View high scores
-./rogue -s
-
-# Test death screen (demo mode)
-./rogue -d
-```
-
-### In-Game Commands
-
-- **`?`** - Show help/command list
-- **`/`** - Identify objects on screen
-- **Arrow keys** or **h/j/k/l** - Move
-- **`.`** - Wait/rest
-- **`i`** - Show inventory
-- **`e`** - Eat food
-- **`q`** - Quaff potion
-- **`r`** - Read scroll
-- **`w`** - Wield weapon
-- **`W`** - Wear armor
-- **`t`** - Throw object
-- **`z`** - Zap wand/staff
-- **`Q`** - Quit game
-
-### Environment Variables
-
-```bash
-# Set game options via environment
-export ROGUEOPTS="name=YourName,terse,jump"
-
-# Wizard mode: set dungeon seed
-export SEED=12345
-./rogue ""  # Empty string as first arg enables wizard mode
-```
-
----
-
-## Project Structure
-
-### Core Files
-
-```
-rogue.h              # Main header with data structures and defines
-extern.h             # External declarations and platform defines
-main.c               # Entry point, initialization, main game loop
-command.c            # Command processing and input handling
-```
-
-### Game Systems
-
-**Note**: All source files are in the root directory. The structure below is logical grouping, not actual directory structure.
-
-**Combat System**:
-```
-fight.c          # Combat mechanics
-weapons.c        # Weapon types and properties
-armor.c          # Armor types and properties
-```
-
-**Monster System**:
-```
-monsters.c       # Monster definitions and stats
-chase.c          # Monster AI and pathfinding
-```
-
-**Item System**:
-```
-potions.c        # Potion types and effects
-scrolls.c        # Scroll types and effects
-rings.c          # Ring types and effects
-sticks.c         # Wand/staff types and effects
-things.c         # General item handling
-```
-
-**Dungeon Generation**:
-```
-rooms.c          # Room generation
-passages.c       # Corridor generation
-new_level.c      # Level creation and initialization
-```
-
-**User Interface**:
-```
-io.c             # Input/output handling
-list.c           # Inventory and object lists
-rip.c            # Death screen
-```
-
-### Supporting Systems
-
-```
-daemon.c             # Background processes (monster movement, hunger, etc.)
-daemons.c            # Daemon management
-move.c               # Player and monster movement
-pack.c               # Inventory management
-save.c               # Save/load game state
-state.c              # Game state management
-init.c               # Initialization routines
-extern.c             # Global variable definitions
-```
-
-### Platform Abstraction
-
-```
-mach_dep.c           # Machine-dependent code detection
-mdport.c             # Platform abstraction layer
-```
-
-### Build System
-
-```
-configure.ac         # Autoconf configuration
-Makefile.in          # Makefile template
-config.h.in          # Config header template
-```
-
----
-
-## Development Guide
-
-### Code Style
-
-This codebase follows classic C (pre-C99) conventions:
-
-- Uses `register` keyword for frequently accessed variables
-- Custom macros for control flow (`when`, `otherwise`, `on()`, etc.)
-- Linked lists for dynamic data structures
-- Bit flags for object/monster states
-- Function declarations in headers, definitions in `.c` files
-
-### Key Data Structures
-
-#### `THING` (union)
-Represents both monsters and objects:
-```c
-union thing {
-    struct {  // Monster/player
-        coord t_pos;
-        struct stats t_stats;
-        short t_flags;
-        // ...
-    } _t;
-    struct {  // Object
-        int o_type;
-        int o_which;
-        int o_hplus, o_dplus;
-        // ...
-    } _o;
-};
-```
-
-#### `PLACE`
-Represents a map cell:
-```c
-typedef struct {
-    char p_ch;        // Character to display
-    char p_flags;     // Flags (seen, passage, etc.)
-    THING *p_monst;   // Monster at this location
-} PLACE;
-```
-
-### Game Loop Flow
-
-```
-main()
-  ├─> Initialize (curses, player, objects)
-  ├─> new_level()      # Generate first level
-  ├─> Start daemons    # Background processes
-  └─> playit()
-       └─> while(playing)
-            └─> command()
-                 ├─> do_daemons(BEFORE)
-                 ├─> Read input
-                 ├─> Execute command
-                 ├─> do_daemons(AFTER)
-                 └─> Monster movement
-```
-
-### Daemons and Fuses
-
-**Daemons** are background processes that run every turn:
-- `runners()` - Monster movement
-- `doctor()` - Health regeneration
-- `stomach()` - Hunger system
-- `swander()` - Wandering monsters
-
-**Fuses** are one-time delayed actions:
-- Used for temporary effects (haste, confusion, etc.)
-
-### Adding New Features
-
-1. **New Monster Type**:
-   - Add entry to `monsters[]` array in `monsters.c`
-   - Update monster generation logic in `new_level.c`
-
-2. **New Item Type**:
-   - Add type constant to `rogue.h`
-   - Add info structure (e.g., `pot_info[]` for potions)
-   - Implement effect in corresponding file (e.g., `potions.c`)
-
-3. **New Command**:
-   - Add case in `command()` function in `command.c`
-   - Implement handler function
-
-### Debugging
-
-#### Enable Wizard Mode
-
-```bash
-./configure --enable-wizardmode
-make
-./rogue ""  # Empty string enables wizard password prompt
-```
-
-Wizard mode provides:
-- See all monsters (`SEEMONST` flag)
-- Set dungeon seed via `SEED` environment variable
-- Debug commands (see `wizard.c`)
-
-#### Compile with Debug Symbols
-
-```bash
-./configure CFLAGS="-g -O0"
-make
-gdb ./rogue
-```
-
-### Testing
-
-```bash
-# Test death screen
-./rogue -d
-
-# Test scoreboard
-./rogue -s
-
-# Test save/restore
-./rogue
-# Play a bit, save (S command), quit
-./rogue ~/rogue.save  # Should restore
-```
-
----
-
-## Contributing
-
-We welcome contributions! Here's how to get started:
-
-### Getting Started
-
-1. **Fork the repository** (if using git)
-2. **Create a branch** for your changes
-3. **Make your changes** following the code style
-4. **Test thoroughly** - play the game, test edge cases
-5. **Submit a pull request** or patch
-
-### Contribution Guidelines
-
-- **Code Style**: Follow existing conventions (see [Development Guide](#development-guide))
-- **Testing**: Test on multiple platforms if possible
-- **Documentation**: Update relevant comments/docs
-- **Commits**: Write clear commit messages
-- **Scope**: Keep changes focused and atomic
-
-### Areas Needing Help
-
-- **Bug fixes**: Check for known issues or test edge cases
-- **Platform support**: Improve Windows/DOS/Cygwin compatibility
-- **Code cleanup**: Modernize while maintaining compatibility
-- **Documentation**: Improve code comments and user docs
-- **Performance**: Optimize hot paths
-- **Accessibility**: Improve terminal compatibility
-
-### Reporting Bugs
-
-When reporting bugs, please include:
-- Platform and OS version
-- Compiler and version
-- Steps to reproduce
-- Expected vs. actual behavior
-- Any error messages
-
----
-
-## Troubleshooting
-
-**Note**: For detailed information about known build issues, especially on modern systems, see [BUILD_ISSUES.md](BUILD_ISSUES.md).
-
-### Build Issues
-
-**Problem**: `configure: error: curses library not found` or similar ncurses-related errors
-
-**Solution**: Install the ncurses **development** package (includes headers):
-```bash
-# Debian/Ubuntu
-sudo apt-get install libncurses-dev
-# Or for older systems:
-sudo apt-get install libncurses5-dev
-
-# RHEL/CentOS
-sudo yum install ncurses-devel
-
-# Fedora
-sudo dnf install ncurses-devel
-
-# macOS
-brew install ncurses
-
-# FreeBSD
-pkg install ncurses
-```
-
-**Important**: You need the development package (with `-dev` or `-devel` in the name), not just the runtime library. The development package includes the header files (`curses.h`) required for compilation.
-
-**Problem**: `autoreconf: command not found` or `autoconf: command not found`
-
-**Solution**: Install autotools (only needed if `configure` script doesn't exist):
-```bash
-# Debian/Ubuntu
-sudo apt-get install autoconf automake m4
-
-# RHEL/CentOS/Fedora
-sudo yum install autoconf automake m4
-
-# macOS (usually pre-installed with Xcode)
-xcode-select --install
-# Or via Homebrew:
-brew install autoconf automake
-
-# FreeBSD
-pkg install autoconf automake m4
-```
-
-**Note**: If the `configure` script already exists, you don't need these tools. Only run `autoreconf` if you're building from a git repository without generated files.
-
-**Problem**: Compilation errors about undefined functions
-
-**Solution**: Ensure `configure` was run successfully and `config.h` exists:
-```bash
-./configure
-make clean
-make
-```
-
-**Problem**: Compilation errors about incomplete type 'WINDOW' or `curscr->_cury` / `curscr->_curx`
-
-**Solution**: This is a known compatibility issue with modern ncurses. The codebase attempts to access internal ncurses structure members that are not available in modern ncurses libraries. See [BUILD_ISSUES.md](BUILD_ISSUES.md) for detailed information about this issue and potential fixes.
-
-**Problem**: `make: command not found`
-
-**Solution**: Install make:
-```bash
-# Debian/Ubuntu
-sudo apt-get install build-essential
-
-# RHEL/CentOS/Fedora
-sudo yum groupinstall "Development Tools"
-
-# macOS
-xcode-select --install
-
-# FreeBSD (use gmake)
-pkg install gmake
-# Then use: gmake instead of make
-```
-
-**Problem**: `configure: error: cannot find install-sh or install.sh`
-
-**Solution**: The `install-sh` script should be in the repository. If missing, you may need to regenerate it:
-```bash
-autoreconf -fiv
-```
-
-**Problem**: Documentation build fails (missing groff/nroff/tbl)
-
-**Solution**: Documentation tools are optional. The game will build without them, but man pages won't be generated:
-```bash
-# Install documentation tools (optional)
-# Debian/Ubuntu
-sudo apt-get install groff
-
-# RHEL/CentOS/Fedora
-sudo yum install groff
-
-# Or skip documentation generation - the game will still build
-```
-
-### Runtime Issues
-
-**Problem**: Screen is too small
-
-**Solution**: Rogue requires at least 24x80 terminal. Resize your terminal or use a larger font.
-
-**Problem**: Terminal doesn't support colors/features
-
-**Solution**: The game will auto-detect terminal capabilities. For best experience, use a modern terminal emulator (xterm, gnome-terminal, iTerm2, etc.).
-
-**Problem**: Save file corruption
-
-**Solution**: Save files are encrypted. Don't edit them manually. If corrupted, delete `~/rogue.save` and start fresh.
-
-**Problem**: Scoreboard permission errors
-
-**Solution**: If using setgid installation:
-```bash
-sudo chgrp games rogue.scr
-sudo chmod 664 rogue.scr
-```
-
-### Platform-Specific
-
-**Windows (MinGW)**: Ensure PDCurses is properly linked. Check `LIBS` in Makefile.
-
-**macOS**: If using Homebrew ncurses and `configure` cannot find it automatically, you may need to specify include/library paths:
-```bash
-# For Intel Macs (Homebrew in /usr/local)
-./configure CPPFLAGS="-I/usr/local/include" LDFLAGS="-L/usr/local/lib"
-
-# For Apple Silicon Macs (Homebrew in /opt/homebrew)
-./configure CPPFLAGS="-I/opt/homebrew/include" LDFLAGS="-L/opt/homebrew/lib"
-
-# Or automatically detect Homebrew ncurses location
-./configure CPPFLAGS="-I$(brew --prefix ncurses)/include" LDFLAGS="-L$(brew --prefix ncurses)/lib"
-
-# Or let pkg-config find it (if available)
-./configure PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig"
-```
-
-**Note**: If you just installed ncurses via Homebrew, the `configure` script should usually find it automatically. Only use these options if `configure` reports that it cannot find the curses library.
-
-**Cygwin**: Ensure you're using the Cygwin version of ncurses, not a Windows port.
-
----
-
-## Resources
-
-### Documentation
-
-- **In-game help**: Press `?` during gameplay
-- **Man page**: `man rogue` (after installation)
-- **Game guide**: See `rogue.doc` (generated from `rogue.me.in`)
-
-### External Resources
-
-- **Original Rogue**: The game that started it all
-- **Roguelike genre**: This game inspired NetHack, Angband, and many others
-- **Roguelike development**: Great learning resource for game programming
-
-### Related Projects
-
-- **NetHack**: Spiritual successor with more features
-- **Brogue**: Modern roguelike with beautiful ASCII graphics
-- **DCSS**: Dungeon Crawl Stone Soup, another modern roguelike
-
----
-
-## License
-
-This project is licensed under a BSD-style license. See [LICENSE.TXT](LICENSE.TXT) for details.
-
-**Copyright (C) 1980-1983, 1985, 1999 Michael Toy, Ken Arnold and Glenn Wichman**
-
-Portions based on work by:
-- Nicholas J. Kisseberth (state.c, mdport.c)
-- David Burren (xcrypt.c)
-
----
-
-## Acknowledgments
-
-This is the classic Rogue game that defined the roguelike genre. Thanks to the original authors for creating this timeless game, and to all contributors who have helped maintain and improve it over the years.
-
-**Happy dungeon crawling!**
-
----
-
-*For questions, issues, or contributions, please refer to the project's issue tracker or contact the maintainers.*
-
+[☕ Support dtz-labs and new ZX Spectrum software](https://buymeacoffee.com/mpasternak)

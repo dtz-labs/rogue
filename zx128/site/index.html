@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Play the ZX Spectrum 128K port of Rogue 5.4.4 in your browser, or download the tested TAP image.">
+  <link rel="canonical" href="https://dtz-labs.github.io/rogue/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="jsspeccy/jsspeccy.js"></script>
+  <script defer src="app.js"></script>
+  <title>Rogue ZX128 — play online</title>
+</head>
+<body>
+  <a class="skip-link" href="#play">Skip to the emulator</a>
+
+  <header class="terminal-nav">
+    <nav class="terminal-nav__inner" aria-label="Primary navigation">
+      <div class="terminal-nav__line" aria-label="Rogue ZX128 navigation">
+        <span class="terminal-nav__prompt" aria-hidden="true">&gt;</span>
+        <strong>rogue-zx128</strong>
+        <a href="#play">--play</a>
+        <a href="#keys">--keys</a>
+        <a href="https://github.com/dtz-labs/rogue/tree/codex/zx128-port">--source</a>
+        <span class="terminal-nav__caret" aria-hidden="true">▮</span>
+      </div>
+
+      <details class="terminal-nav__mobile">
+        <summary><span aria-hidden="true">&gt;</span> menu <span class="terminal-nav__caret" aria-hidden="true">▮</span></summary>
+        <div class="terminal-nav__mobile-links">
+          <a href="#play">Play</a>
+          <a href="#keys">Keys</a>
+          <a href="https://github.com/dtz-labs/rogue/tree/codex/zx128-port">Source</a>
+        </div>
+      </details>
+    </nav>
+  </header>
+
+  <main class="page-shell">
+    <section class="intro" aria-labelledby="page-title">
+      <div class="intro__copy">
+        <h1 id="page-title">Rogue, inside 128K.</h1>
+        <p>The original 5.4.4 dungeon crawler, split across the Spectrum 128K memory banks and kept honest by a real-emulator smoke test.</p>
+      </div>
+      <dl class="build-facts" aria-label="Build facts">
+        <div><dt>Machine</dt><dd>ZX Spectrum 128K</dd></div>
+        <div><dt>Format</dt><dd>multi-bank TAP</dd></div>
+        <div><dt>Input</dt><dd>physical keyboard</dd></div>
+      </dl>
+    </section>
+
+    <section class="player" id="play" aria-labelledby="player-title">
+      <header class="player__header">
+        <div>
+          <h2 id="player-title">Play the current build.</h2>
+          <p id="player-instructions">Press the emulator’s ▶ button, then SPACE. Type a hero name or press Enter to keep “Rogue”. A physical keyboard is required.</p>
+        </div>
+        <p class="emulator-status" id="emulator-status" role="status" aria-live="polite" data-state="loading">Loading emulator…</p>
+      </header>
+
+      <div class="player__workbench">
+        <div class="emulator-stage" role="region" aria-labelledby="player-title">
+          <div id="jsspeccy"></div>
+          <noscript>JavaScript is required for the browser emulator. The TAP download remains available below.</noscript>
+        </div>
+
+        <aside class="launch-notes" aria-labelledby="first-boot-title">
+          <h3 id="first-boot-title">First boot</h3>
+          <ol>
+            <li>Press ▶ in JSSpeccy.</li>
+            <li>Wait for the key sheet.</li>
+            <li>Press SPACE and name the hero.</li>
+            <li>Press Enter and descend.</li>
+          </ol>
+          <div class="launch-notes__actions">
+            <a class="action-link" href="rogue-zx128.tap" download>Download TAP →</a>
+            <a class="action-link" href="https://github.com/dtz-labs/rogue/tree/codex/zx128-port/zx128">Read build notes →</a>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="keys" id="keys" aria-labelledby="keys-title">
+      <header class="keys__header">
+        <h2 id="keys-title">Keep these keys nearby.</h2>
+        <p>The complete key sheet also appears before each new game.</p>
+      </header>
+      <dl class="key-grid">
+        <div class="key-row"><dt><kbd>h j k l</kbd> <kbd>y u b n</kbd></dt><dd>move in eight directions</dd></div>
+        <div class="key-row"><dt><kbd>SHIFT</kbd> + direction</dt><dd>run</dd></div>
+        <div class="key-row"><dt><kbd>i</kbd></dt><dd>full-screen inventory</dd></div>
+        <div class="key-row"><dt><kbd>,</kbd></dt><dd>pick up an item</dd></div>
+        <div class="key-row"><dt><kbd>?</kbd></dt><dd>command help</dd></div>
+        <div class="key-row"><dt><kbd>BREAK</kbd></dt><dd>cancel — CAPS SHIFT + SPACE</dd></div>
+        <div class="key-row"><dt><kbd>Q</kbd></dt><dd>quit the current run</dd></div>
+        <div class="key-row"><dt><kbd>R</kbd></dt><dd>restart after death or quit</dd></div>
+      </dl>
+    </section>
+
+    <aside class="support" aria-labelledby="support-title">
+      <div>
+        <h2 id="support-title">More Spectrum software, fewer abandoned ports.</h2>
+        <p>If this build earns another evening of development, you can help fund it.</p>
+      </div>
+      <a class="sponsor" href="https://buymeacoffee.com/mpasternak" aria-label="Sponsor dtz-labs — support new ZX Spectrum software">
+        <span class="sponsor__wide" aria-hidden="true">☕ Sponsor dtz-labs — support new ZX Spectrum software</span>
+        <span class="sponsor__narrow" aria-hidden="true">☕ Sponsor dtz-labs</span>
+      </a>
+    </aside>
+  </main>
+
+  <footer class="colophon">
+    <p>Rogue 5.4.4 by Michael Toy, Ken Arnold and Glenn Wichman. ZX128 port source and BSD notice: <a href="https://github.com/dtz-labs/rogue/tree/codex/zx128-port">dtz-labs/rogue</a> · <a href="LICENSE-ROGUE.txt">license</a>. Browser emulation: <a href="https://github.com/gasman/jsspeccy3/tree/v3.2">JSSpeccy 3.2</a> · <a href="COPYING-JSSPECCY3.txt">GPL-3.0</a> · <a href="SOURCE-JSSPECCY3.txt">corresponding source</a>. <a href="https://github.com/Davidslv/rogue/blob/546829b745ab8b1bca39b14f8bac5defd6c13fac/README.md">Original upstream README</a>.</p>
+  </footer>
+</body>
+</html>
