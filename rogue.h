@@ -487,6 +487,14 @@ void zx_place_set_monst(int y, int x, THING *monst);
 char zx_place_winat(int y, int x);
 void zx_places_clear(void);
 char *zx_random_color_name(void);
+void zx_screen_copy(unsigned int index, unsigned char *target,
+                    unsigned char count);
+void zx_screen_write(unsigned int index, const unsigned char *source,
+                     unsigned char count);
+void zx_screen_snapshot_save(void) ZX_BANKED_7;
+void zx_screen_snapshot_restore(void) ZX_BANKED_7;
+void zx_inventory_overlay_clear(void) ZX_BANKED_6;
+void zx_inventory_overlay_line(unsigned char row, const char *text) ZX_BANKED_6;
 #endif
 
 /*
@@ -560,7 +568,6 @@ bool	add_haste(bool potion) ZX_BANKED_3;
 void	add_pack(THING *obj, bool silent) ZX_BANKED_1;
 void	add_pass();
 void	add_str(str_t *sp, int amt) ZX_BANKED_3;
-void	accnt_maze(int y, int x, int ny, int nx);
 void	aggravate() ZX_BANKED_3;
 int	attack(THING *mp);
 void	badcheck(char *name, struct obj_info *info, int bound);

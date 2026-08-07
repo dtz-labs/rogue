@@ -16,6 +16,10 @@
 #include <ctype.h>
 #include "rogue.h"
 
+static const char thing_list[] = {
+	POTION, SCROLL, RING, STICK, FOOD, WEAPON, ARMOR, STAIRS, GOLD, AMULET
+};
+
 /*
  * look:
  *	A quick glance all around the player
@@ -476,7 +480,7 @@ get_dir()
 {
     char *prompt;
     bool gotit;
-    static coord last_delt= {0,0};
+    static coord last_delt;
 
     if (again && last_dir != '\0')
     {
@@ -586,9 +590,6 @@ char
 rnd_thing()
 {
     int i;
-    static char thing_list[] = {
-	POTION, SCROLL, RING, STICK, FOOD, WEAPON, ARMOR, STAIRS, GOLD, AMULET
-    };
 
     if (level >= AMULETLEVEL)
         i = rnd(sizeof thing_list / sizeof (char));

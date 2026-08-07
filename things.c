@@ -424,7 +424,11 @@ discovered()
 		if (terse)
 		    msg("Not a type");
 		else
+#ifdef ZX128
+		    msg("Please type one of %c%c%c%c (BREAK to quit)", POTION, SCROLL, RING, STICK);
+#else
 		    msg("Please type one of %c%c%c%c (ESCAPE to quit)", POTION, SCROLL, RING, STICK);
+#endif
 	}
     } while (!disc_list);
     if (ch == '*')
@@ -532,8 +536,41 @@ add_line(char *fmt, char *arg)
 {
     WINDOW *tw, *sw;
     int x, y;
-    char *prompt = "--Press space to continue--";
-    static int maxlen = -1;
+    const char *prompt = "--Press space to continue--";
+    static int maxlen;
+#ifdef ZX128
+    char overlay_line[ZX_VIEWPORT_COLS + 1];
+    int overlay_len;
+
+    if (inv_type == INV_CLEAR)
+    {
+	if (line_cnt == 0)
+	    zx_inventory_overlay_clear();
+	if (line_cnt >= LINES - 1 || fmt == NULL)
+	{
+	    strcpy(overlay_line, prompt);
+	    zx_inventory_overlay_line(LINES - 1, overlay_line);
+	    wait_for(' ');
+	    newpage = TRUE;
+	    line_cnt = 0;
+	    if (fmt == NULL)
+	    {
+		touchwin(stdscr);
+		wrefresh(stdscr);
+	    }
+	    else
+		zx_inventory_overlay_clear();
+	}
+	if (fmt != NULL && !(line_cnt == 0 && *fmt == '\0'))
+	{
+	    overlay_len = snprintf(overlay_line, sizeof overlay_line, fmt, arg);
+	    if (overlay_len > ZX_VIEWPORT_COLS)
+		overlay_line[ZX_VIEWPORT_COLS - 1] = '>';
+	    zx_inventory_overlay_line((unsigned char)line_cnt++, overlay_line);
+	}
+	return ~ESCAPE;
+    }
+#endif
 
     if (line_cnt == 0)
     {
@@ -550,7 +587,7 @@ add_line(char *fmt, char *arg)
     }
     else
     {
-	if (maxlen < 0)
+	if (maxlen == 0)
 	    maxlen = (int) strlen(prompt);
 	if (line_cnt >= LINES - 1 || fmt == NULL)
 	{
@@ -627,6 +664,11 @@ end_line()
 {
     if (inv_type != INV_SLOW)
     {
+#ifdef ZX128
+	if (inv_type == INV_CLEAR)
+	    add_line((char *) NULL, NULL);
+	else
+#endif
 	if (line_cnt == 1 && !newpage)
 	{
 	    mpos = 0;

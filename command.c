@@ -16,6 +16,28 @@
 #include <ctype.h>
 #include "rogue.h"
 
+static const struct h_list ident_list[] = {
+	{'|',		"wall of a room",		FALSE},
+	{'-',		"wall of a room",		FALSE},
+	{GOLD,		"gold",				FALSE},
+	{STAIRS,	"a staircase",			FALSE},
+	{DOOR,		"door",				FALSE},
+	{FLOOR,		"room floor",			FALSE},
+	{PLAYER,	"you",				FALSE},
+	{PASSAGE,	"passage",			FALSE},
+	{TRAP,		"trap",				FALSE},
+	{POTION,	"potion",			FALSE},
+	{SCROLL,	"scroll",			FALSE},
+	{FOOD,		"food",				FALSE},
+	{WEAPON,	"weapon",			FALSE},
+	{' ',		"solid rock",			FALSE},
+	{ARMOR,		"armor",			FALSE},
+	{AMULET,	"the Amulet of Yendor",		FALSE},
+	{RING,		"ring",				FALSE},
+	{STICK,		"wand or staff",		FALSE},
+	{'\0'}
+};
+
 /*
  * command:
  *	Process the user commands
@@ -27,7 +49,7 @@ command()
     register int ntimes = 1;			/* Number of player moves */
     char place_flags;
     THING *mp;
-    static char countch, direction, newcount = FALSE;
+    static char countch, direction, newcount;
 
     if (on(player, ISHASTE))
 	ntimes++;
@@ -615,29 +637,8 @@ void
 identify()
 {
     register int ch;
-    register struct h_list *hp;
+    register const struct h_list *hp;
     register char *str;
-    static struct h_list ident_list[] = {
-	{'|',		"wall of a room",		FALSE},
-	{'-',		"wall of a room",		FALSE},
-	{GOLD,		"gold",				FALSE},
-	{STAIRS,	"a staircase",			FALSE},
-	{DOOR,		"door",				FALSE},
-	{FLOOR,		"room floor",			FALSE},
-	{PLAYER,	"you",				FALSE},
-	{PASSAGE,	"passage",			FALSE},
-	{TRAP,		"trap",				FALSE},
-	{POTION,	"potion",			FALSE},
-	{SCROLL,	"scroll",			FALSE},
-	{FOOD,		"food",				FALSE},
-	{WEAPON,	"weapon",			FALSE},
-	{' ',		"solid rock",			FALSE},
-	{ARMOR,		"armor",			FALSE},
-	{AMULET,	"the Amulet of Yendor",		FALSE},
-	{RING,		"ring",				FALSE},
-	{STICK,		"wand or staff",		FALSE},
-	{'\0'}
-    };
 
     msg("what do you want identified? ");
     ch = readchar();

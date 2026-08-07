@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "curses.h"
+#include "rogue.h"
 #include "zx_banking.h"
 
 #define ZX_SCREEN_ROWS 24
@@ -345,6 +346,8 @@ char *unctrl(int ch)
 {
     static char text[3];
     ch &= 0xff;
+    if (ch == ESCAPE)
+        return "BREAK";
     if (ch < 32) {
         text[0] = '^';
         text[1] = (char)(ch + '@');

@@ -1,3 +1,4 @@
+#include <arch/zx.h>
 #include <curses.h>
 #include <string.h>
 #include "rogue.h"
@@ -56,7 +57,7 @@ int roll(int number, int sides)
 
 void playit(void)
 {
-    inv_type = INV_SLOW;
+    inv_type = INV_CLEAR;
     oldpos = hero;
     oldrp = roomin(&hero);
     while (playing) {
@@ -111,7 +112,12 @@ void resetltchars(void) { }
 void playltchars(void) { }
 
 void md_init(void) { }
-int md_readchar(void) { return getch(); }
+int md_readchar(void)
+{
+    int ch = getch();
+
+    return ch == ' ' && zx_break() ? ESCAPE : ch;
+}
 int md_hasclreol(void) { return TRUE; }
 int md_shellescape(void) { return FALSE; }
 int md_getpid(void) { return 1; }

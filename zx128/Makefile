@@ -47,7 +47,7 @@ BANK1_NAMES := pack things options
 BANK3_NAMES := init misc monsters wizard vers rip_zx
 BANK4_NAMES := potions scrolls sticks weapons
 BANK6_NAMES := chase fight daemons renderer viewport message
-BANK7_NAMES := new_level rooms passages daemon list
+BANK7_NAMES := new_level rooms passages daemon list screen_snapshot
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
 	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES)))
@@ -62,11 +62,12 @@ OBJS := $(FIXED_OBJS) $(BANK0_OBJS) $(BANK1_OBJS) $(BANK3_OBJS) \
 	$(BUILD)/bank0/bank_storage.o $(BUILD)/bank1/bank_storage.o \
 	$(BUILD)/bank3/bank_storage.o $(BUILD)/bank4/bank_storage.o
 COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
-	include/curses.h include/zx_banking.h include/zx_message.h
+	include/curses.h include/zx_banking.h include/zx_message.h \
+	include/zx_places.h
 
 $(OBJS): $(COMMON_DEPS)
 
-.PHONY: all build check-zesarux clean layout run-zesarux run-zesarux-zx128 \
+.PHONY: all build check-banked-objects check-zesarux clean layout run-zesarux run-zesarux-zx128 \
 	smoke-zesarux smoke-zesarux-zx128
 
 all: build
@@ -131,7 +132,11 @@ $(TAP): $(OBJS)
 	$(ZCC_ENV) $(ZCC) $(LDFLAGS) -o $(MAIN_BIN) $(OBJS)
 	@test -f "$@" || { echo "z88dk did not create expected TAP: $@" >&2; exit 1; }
 
-layout: build
+check-banked-objects: build
+	$(ZCC_ENV) python3 tools/check_banked_objects.py \
+		--nm z88dk-z80nm --build-dir $(BUILD)
+
+layout: check-banked-objects
 	python3 tools/check_layout.py --map $(MAP) --main-bin $(MAIN_BIN) \
 		--stack-reserve 3072 --heap-reserve 3072
 
@@ -151,7 +156,7 @@ run-zesarux-zx128: layout check-zesarux
 smoke-zesarux: smoke-zesarux-zx128
 
 smoke-zesarux-zx128: layout check-zesarux
-	python3 tools/zesarux_smoke.py \
+	python3 -u tools/zesarux_smoke.py \
 		--zesarux "$(ZESARUX)" \
 		--tap "$(abspath $(TAP))" \
 		--map "$(abspath $(MAP))" \

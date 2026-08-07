@@ -83,7 +83,17 @@ option()
 {
     OPTION	*op;
     int		retval;
+#ifdef ZX128
+    unsigned char saved_viewport;
+    bool saved_see_floor;
+#endif
 
+#ifdef ZX128
+    saved_viewport = zx_viewport_first_col;
+    saved_see_floor = see_floor;
+    zx_screen_snapshot_save();
+    zx_viewport_set(ZX_VIEWPORT_NONE);
+#endif
     wclear(hw);
     /*
      * Display current values of options
@@ -125,9 +135,28 @@ option()
     waddstr(hw, "--Press space to continue--");
     wrefresh(hw);
     wait_for(' ');
+#ifdef ZX128
+    after = FALSE;
+    zx_screen_snapshot_restore();
+    if (saved_see_floor != see_floor)
+    {
+	if (!see_floor)
+	{
+	    see_floor = TRUE;
+	    erase_lamp(&hero, proom);
+	    see_floor = FALSE;
+	}
+	else
+	    look(FALSE);
+    }
+    zx_viewport_set(saved_viewport);
+    clearok(curscr, TRUE);
+    wrefresh(stdscr);
+#else
     clearok(curscr, TRUE);
     touchwin(stdscr);
     after = FALSE;
+#endif
 }
 
 /*
@@ -138,7 +167,11 @@ option()
 void
 pr_optname(OPTION *op)
 {
+#ifdef ZX128
+    wprintw(hw, "%s: ", op->o_name);
+#else
     wprintw(hw, "%s (\"%s\"): ", op->o_prompt, op->o_name);
+#endif
 }
 
 /*
@@ -218,6 +251,7 @@ get_bool(void *vp, WINDOW *win)
 	}
     }
     wmove(win, oy, ox);
+    wclrtoeol(win);
     waddstr(win, *bp ? "True" : "False");
     waddch(win, '\n');
     return NORM;
@@ -232,12 +266,17 @@ int
 get_sf(void *vp, WINDOW *win)
 {
     bool	*bp = (bool *) vp;
+#ifndef ZX128
     bool	was_sf;
+#endif
     int		retval;
 
+#ifndef ZX128
     was_sf = see_floor;
+#endif
     retval = get_bool(bp, win);
     if (retval == QUIT) return(QUIT);
+#ifndef ZX128
     if (was_sf != see_floor)
     {
 	if (!see_floor) {
@@ -248,6 +287,7 @@ get_sf(void *vp, WINDOW *win)
 	else
 	    look(FALSE);
     }
+#endif
     return(NORM);
 }
 
@@ -256,6 +296,11 @@ get_sf(void *vp, WINDOW *win)
  *	Set a string option
  */
 #define MAXINP	50	/* max string to read from terminal or environment */
+#ifdef ZX128
+#define INPUT_BUFFER_SIZE (MAXINP + 1)
+#else
+#define INPUT_BUFFER_SIZE MAXSTR
+#endif
 
 int
 get_str(void *vopt, WINDOW *win)
@@ -265,7 +310,7 @@ get_str(void *vopt, WINDOW *win)
     int oy, ox;
     int i;
     signed char c;
-    static char buf[MAXSTR];
+    static char buf[INPUT_BUFFER_SIZE];
 
     getyx(win, oy, ox);
     wrefresh(win);
@@ -316,7 +361,9 @@ get_str(void *vopt, WINDOW *win)
     *sp = '\0';
     if (sp > buf)	/* only change option if something has been typed */
 	strucpy(opt, buf, (int) strlen(buf));
-    mvwprintw(win, oy, ox, "%s\n", opt);
+    wmove(win, oy, ox);
+    wclrtoeol(win);
+    wprintw(win, "%s\n", opt);
     wrefresh(win);
     if (win == stdscr)
 	mpos += (int)(sp - buf);
@@ -372,11 +419,17 @@ get_inv_t(void *vp, WINDOW *win)
 	    case '-':
 		return MINUS;
 	    default:
+#ifdef ZX128
+		wmove(win, oy, ox + 10);
+#else
 		wmove(win, oy, ox + 15);
+#endif
 		waddstr(win, "(O, S, or C)");
 	}
     }
-    mvwprintw(win, oy, ox, "%s\n", inv_t_name[*ip]);
+    wmove(win, oy, ox);
+    wclrtoeol(win);
+    wprintw(win, "%s\n", inv_t_name[*ip]);
     return NORM;
 }
 	

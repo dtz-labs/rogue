@@ -17,6 +17,18 @@
 #include <ctype.h>
 #include "rogue.h"
 
+static const struct h_list type_names[] = {
+	{POTION, "potion",		FALSE},
+	{SCROLL, "scroll",		FALSE},
+	{FOOD,	 "food",		FALSE},
+	{R_OR_S, "ring, wand or staff",	FALSE},
+	{RING,	 "ring",		FALSE},
+	{STICK,	 "wand or staff",	FALSE},
+	{WEAPON, "weapon",		FALSE},
+	{ARMOR,	 "suit of armor",	FALSE},
+	{'\0'}
+};
+
 /*
  * whatis:
  *	What a certin object is
@@ -99,19 +111,9 @@ set_know(THING *obj, struct obj_info *info)
 char *
 type_name(int type)
 {
-    struct h_list *hp;
-    static struct h_list tlist[] = {
-	{POTION, "potion",		FALSE},
-	{SCROLL, "scroll",		FALSE},
-	{FOOD,	 "food",		FALSE},
-	{R_OR_S, "ring, wand or staff",	FALSE},
-	{RING,	 "ring",		FALSE},
-	{STICK,	 "wand or staff",	FALSE},
-	{WEAPON, "weapon",		FALSE},
-	{ARMOR,	 "suit of armor",	FALSE},
-    };
+    const struct h_list *hp;
 
-    for (hp = tlist; hp->h_ch; hp++)
+    for (hp = type_names; hp->h_ch; hp++)
 	if (type == hp->h_ch)
 	    return hp->h_desc;
     /* NOTREACHED */

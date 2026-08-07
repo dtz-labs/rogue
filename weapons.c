@@ -290,6 +290,8 @@ fallpos(coord *pos, coord *newpos)
     for (y = pos->y - 1; y <= pos->y + 1; y++)
 	for (x = pos->x - 1; x <= pos->x + 1; x++)
 	{
+	    if (y < 0 || y >= NUMLINES || x < 0 || x >= NUMCOLS)
+		continue;
 	    /*
 	     * check to make certain the spot is empty, if it is,
 	     * put the object there, set it in the level list

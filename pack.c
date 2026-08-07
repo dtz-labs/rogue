@@ -253,7 +253,11 @@ pack_char()
 bool
 inventory(THING *list, int type)
 {
+#ifdef ZX128
+    static char inv_temp[8];
+#else
     static char inv_temp[MAXSTR];
+#endif
 
     n_objs = 0;
     for (; list != NULL; list = next(list))

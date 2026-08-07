@@ -14,12 +14,6 @@
 #include <curses.h>
 #include "rogue.h"
 
-typedef struct spot {		/* position matrix for maze positions */
-	int	nexits;
-	coord	exits[4];
-	int	used;
-} SPOT;
-
 #define GOLDGRP 1
 
 /*
@@ -207,21 +201,11 @@ horiz(struct room *rp, int starty)
 
 static int	Maxy, Maxx, Starty, Startx;
 
-static SPOT	maze[NUMLINES/3+1][NUMCOLS/3+1];
-
-
 void
 do_maze(struct room *rp)
 {
-    SPOT *sp;
     int starty, startx;
     static coord pos;
-
-    for (sp = &maze[0][0]; sp <= &maze[NUMLINES / 3][NUMCOLS / 3]; sp++)
-    {
-	sp->used = FALSE;
-	sp->nexits = 0;
-    }
 
     Maxy = rp->r_max.y;
     Maxx = rp->r_max.x;
@@ -269,8 +253,6 @@ dig(int y, int x)
 	}
 	if (cnt == 0)
 	    return;
-	accnt_maze(y, x, nexty, nextx);
-	accnt_maze(nexty, nextx, y, x);
 	if (nexty == y)
 	{
 	    pos.y = y + Starty;
@@ -293,25 +275,6 @@ dig(int y, int x)
 	putpass(&pos);
 	dig(nexty, nextx);
     }
-}
-
-/*
- * accnt_maze:
- *	Account for maze exits
- */
-
-void
-accnt_maze(int y, int x, int ny, int nx)
-{
-    SPOT *sp;
-    coord *cp;
-
-    sp = &maze[y][x];
-    for (cp = sp->exits; cp < &sp->exits[sp->nexits]; cp++)
-	if (cp->y == ny && cp->x == nx)
-	    return;
-    cp->y = ny;
-    cp->x = nx;
 }
 
 /*

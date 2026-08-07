@@ -1,19 +1,17 @@
 #include <curses.h>
 #include <string.h>
 #include "rogue.h"
+#include "zx_places.h"
 #include <arch/z80.h>
 #include <intrinsic.h>
 
 #define ZX_BANKM (*(volatile unsigned char *)23388)
-#define ZX_PLACE_BANK0_COUNT (25U * MAXLINES)
-#define ZX_PLACE_BANK1_COUNT (19U * MAXLINES)
-#define ZX_PLACE_BANK3_COUNT (21U * MAXLINES)
 #define ZX_SCREEN_COUNT (24U * 80U)
 
 extern PLACE zx_places_bank0[ZX_PLACE_BANK0_COUNT];
 extern PLACE zx_places_bank1[ZX_PLACE_BANK1_COUNT];
 extern PLACE zx_places_bank3[ZX_PLACE_BANK3_COUNT];
-extern PLACE zx_places_bank4[15U * MAXLINES];
+extern PLACE zx_places_bank4[ZX_PLACE_BANK4_COUNT];
 extern unsigned char zx_screen_bank3[ZX_SCREEN_COUNT];
 
 static void write_page_state(unsigned char state)
@@ -58,7 +56,10 @@ static PLACE *place_address(unsigned int index, unsigned char *bank)
 
 static unsigned int place_index(int y, int x)
 {
-    return ((unsigned int)x << 5) + (unsigned int)y;
+    unsigned int column = (unsigned int)x;
+
+    column += column << 1;
+    return (column << 3) + (unsigned int)y;
 }
 
 void zx_place_get(int y, int x, PLACE *place)
@@ -165,7 +166,7 @@ void zx_places_clear(void)
     clear_place_chunk(zx_places_bank0, ZX_PLACE_BANK0_COUNT, 0);
     clear_place_chunk(zx_places_bank1, ZX_PLACE_BANK1_COUNT, 1);
     clear_place_chunk(zx_places_bank3, ZX_PLACE_BANK3_COUNT, 3);
-    clear_place_chunk(zx_places_bank4, 15U * MAXLINES, 4);
+    clear_place_chunk(zx_places_bank4, ZX_PLACE_BANK4_COUNT, 4);
 }
 
 void zx_screen_set(unsigned int index, unsigned char value)
@@ -189,6 +190,14 @@ void zx_screen_copy(unsigned int index, unsigned char *target,
 {
     unsigned char old_state = page_bank(3);
     memcpy(target, &zx_screen_bank3[index], count);
+    restore_page(old_state);
+}
+
+void zx_screen_write(unsigned int index, const unsigned char *source,
+                     unsigned char count)
+{
+    unsigned char old_state = page_bank(3);
+    memcpy(&zx_screen_bank3[index], source, count);
     restore_page(old_state);
 }
 

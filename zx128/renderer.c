@@ -1,5 +1,6 @@
 #include "curses.h"
 #include "zx_banking.h"
+#include <string.h>
 
 #define ZX_SCREEN_COLS 80
 #define ZX_VISIBLE_COLS 32
@@ -48,4 +49,23 @@ void zx_render_message_line(void)
     zx_screen_copy(ZX_VISIBLE_COLS, physical_row, ZX_VISIBLE_COLS);
     for (col = 0; col < ZX_VISIBLE_COLS; ++col)
         draw_physical_cell(1, col, physical_row[col]);
+}
+
+void zx_inventory_overlay_clear(void)
+{
+    memset((void *)0x4000U, 0, 6144U);
+    memset((void *)0x5800U, 7, 768U);
+}
+
+void zx_inventory_overlay_line(unsigned char row, const char *text)
+{
+    unsigned char ch;
+    unsigned char col;
+
+    for (col = 0; col < ZX_VISIBLE_COLS; ++col) {
+        ch = ' ';
+        if (*text != '\0')
+            ch = (unsigned char)*text++;
+        draw_physical_cell(row, col, ch);
+    }
 }
