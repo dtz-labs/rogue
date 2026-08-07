@@ -27,13 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build TAP with pinned z88dk
+      - name: Build TAP and check banked objects with pinned z88dk
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
             --volume "$GITHUB_WORKSPACE:/src" \
             "$Z88DK_IMAGE" \
-            make -C zx128 build JOBS=2
+            make -C zx128 layout JOBS=2
 
       - name: Check fixed and banked memory layout
         run: |
@@ -102,7 +102,7 @@ jobs:
       - name: Boot and test in ZEsarUX
         run: |
           cd "${{ steps.zesarux.outputs.directory }}"
-          python3 "$GITHUB_WORKSPACE/zx128/tools/zesarux_smoke.py" \
+          python3 -u "$GITHUB_WORKSPACE/zx128/tools/zesarux_smoke.py" \
             --zesarux "${{ steps.zesarux.outputs.binary }}" \
             --tap "$GITHUB_WORKSPACE/zx128/build/rogue-zx128.tap" \
             --map "$GITHUB_WORKSPACE/zx128/build/rogue-zx128.map" \

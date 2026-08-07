@@ -24,6 +24,14 @@ OBJECT_GOLD_VALUE_OFFSET = 39
 OBJECT_FLAGS_OFFSET = 41
 OBJECT_GROUP_OFFSET = 43
 OBJECT_LABEL_OFFSET = 45
+PLACE_ROWS = 24
+PLACE_SIZE = 4
+ROOM_SIZE = 66
+ROOM_FLAGS_OFFSET = 14
+ISMAZE = 0x04
+PASSAGE = ord("#")
+STAIRS = ord("%")
+PLACE_BANK_COLUMNS = ((0, 25), (1, 19), (3, 21), (4, 15))
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,6 +92,17 @@ def send_physical_key(sock: socket.socket, key: int) -> None:
     time.sleep(0.1)
 
 
+def send_break(sock: socket.socket) -> None:
+    """Press the Spectrum BREAK chord (Caps Shift + Space)."""
+    command(sock, "send-keys-event 135 1")
+    time.sleep(0.05)
+    command(sock, "send-keys-event 128 1")
+    time.sleep(0.25)
+    command(sock, "send-keys-event 128 0")
+    command(sock, "send-keys-event 135 0")
+    time.sleep(0.15)
+
+
 def connect(proc: subprocess.Popen[bytes], port: int, timeout: float) -> socket.socket:
     deadline = time.monotonic() + timeout
     last_error: OSError | None = None
@@ -110,6 +129,20 @@ def read_byte(sock: socket.socket, address: int) -> int:
     raise RuntimeError(f"could not parse byte at 0x{address:04X}: {response!r}")
 
 
+def read_bytes(sock: socket.socket, address: int, count: int) -> bytes:
+    response = command(sock, f"read-memory {address} {count}")
+    expected_length = count * 2
+    for line in response.splitlines():
+        payload = line.strip()
+        if len(payload) == expected_length and re.fullmatch(
+            r"[0-9A-Fa-f]+", payload
+        ):
+            return bytes.fromhex(payload)
+    raise RuntimeError(
+        f"could not parse {count} bytes at 0x{address:X}: {response!r}"
+    )
+
+
 def read_word(sock: socket.socket, address: int) -> int:
     return read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
 
@@ -119,10 +152,60 @@ def write_bytes(sock: socket.socket, address: int, *values: int) -> None:
     command(sock, f"write-memory {address} {payload}")
 
 
+def write_word(sock: socket.socket, address: int, value: int) -> None:
+    write_bytes(sock, address, value, value >> 8)
+
+
+def write_dword(sock: socket.socket, address: int, value: int) -> None:
+    write_bytes(sock, address, value, value >> 8, value >> 16, value >> 24)
+
+
 def read_coord(sock: socket.socket, address: int) -> tuple[int, int]:
     x = read_word(sock, address)
     y = read_word(sock, address + 2)
     return x, y
+
+
+def write_coord(sock: socket.socket, address: int, value: tuple[int, int]) -> None:
+    write_bytes(sock, address, value[0], value[0] >> 8, value[1], value[1] >> 8)
+
+
+def bank_symbol_ram_address(address: int) -> int:
+    bank = address >> 16
+    cpu_address = address & 0xFFFF
+    if bank not in range(8) or cpu_address < 0xC000:
+        raise RuntimeError(f"invalid banked symbol address: 0x{address:X}")
+    return bank * 0x4000 + cpu_address - 0xC000
+
+
+def read_machine_ram(sock: socket.socket, address: int, count: int) -> bytes:
+    command(sock, "set-memory-zone 0")
+    try:
+        return read_bytes(sock, address, count)
+    finally:
+        command(sock, "set-memory-zone -1")
+
+
+def write_machine_ram(sock: socket.socket, address: int, *values: int) -> None:
+    command(sock, "set-memory-zone 0")
+    try:
+        write_bytes(sock, address, *values)
+    finally:
+        command(sock, "set-memory-zone -1")
+
+
+def map_cell_ram_address(
+    place_bases: dict[int, int], x: int, y: int
+) -> int:
+    if not (0 <= x < 80 and 0 <= y < PLACE_ROWS):
+        raise RuntimeError(f"invalid map coordinate ({x}, {y})")
+    first_column = 0
+    for bank, columns in PLACE_BANK_COLUMNS:
+        if x < first_column + columns:
+            local_index = (x - first_column) * PLACE_ROWS + y
+            return place_bases[bank] + local_index * PLACE_SIZE
+        first_column += columns
+    raise RuntimeError(f"map coordinate did not resolve to a bank: ({x}, {y})")
 
 
 def wait_for_byte(
@@ -190,6 +273,134 @@ def send_physical_key_until_word(
     raise RuntimeError(
         f"{label} did not reach 0x{expected:04X}; last value was 0x{last:04X}"
     )
+
+
+def send_physical_key_until_byte_change(
+    sock: socket.socket,
+    key: int,
+    address: int,
+    previous: int,
+    timeout: float,
+    label: str,
+) -> int:
+    """Retry a dropped emulator key until an 8-bit state marker advances."""
+    deadline = time.monotonic() + timeout
+    last = read_byte(sock, address)
+    while time.monotonic() < deadline:
+        if last != previous:
+            return last
+        send_physical_key(sock, key)
+        attempt_deadline = min(deadline, time.monotonic() + 2.0)
+        while time.monotonic() < attempt_deadline:
+            last = read_byte(sock, address)
+            if last != previous:
+                return last
+            time.sleep(0.05)
+    raise RuntimeError(f"{label} remained at 0x{last:02X}")
+
+
+def send_physical_key_until_byte(
+    sock: socket.socket,
+    key: int,
+    address: int,
+    expected: int,
+    timeout: float,
+    label: str,
+) -> None:
+    """Retry a dropped emulator key until an 8-bit marker matches."""
+    deadline = time.monotonic() + timeout
+    last = read_byte(sock, address)
+    while time.monotonic() < deadline:
+        if last == expected:
+            return
+        send_physical_key(sock, key)
+        attempt_deadline = min(deadline, time.monotonic() + 2.0)
+        while time.monotonic() < attempt_deadline:
+            last = read_byte(sock, address)
+            if last == expected:
+                return
+            time.sleep(0.05)
+    raise RuntimeError(
+        f"{label} did not reach 0x{expected:02X}; last value was 0x{last:02X}"
+    )
+
+
+def send_physical_key_until_coord(
+    sock: socket.socket,
+    key: int,
+    address: int,
+    expected: tuple[int, int],
+    timeout: float,
+    label: str,
+) -> None:
+    """Retry a dropped key only while the expected movement is still pending."""
+    deadline = time.monotonic() + timeout
+    last = read_coord(sock, address)
+    while time.monotonic() < deadline:
+        if last == expected:
+            return
+        send_physical_key(sock, key)
+        attempt_deadline = min(deadline, time.monotonic() + 2.0)
+        while time.monotonic() < attempt_deadline:
+            last = read_coord(sock, address)
+            if last == expected:
+                return
+            time.sleep(0.05)
+    raise RuntimeError(f"{label} did not reach {expected}; last value was {last}")
+
+
+def read_place_chunks(
+    sock: socket.socket, place_bases: dict[int, int]
+) -> dict[int, bytes]:
+    command(sock, "set-memory-zone 0")
+    try:
+        return {
+            bank: read_bytes(
+                sock, place_bases[bank], columns * PLACE_ROWS * PLACE_SIZE
+            )
+            for bank, columns in PLACE_BANK_COLUMNS
+        }
+    finally:
+        command(sock, "set-memory-zone -1")
+
+
+def place_from_chunks(
+    chunks: dict[int, bytes], x: int, y: int
+) -> tuple[int, int, int]:
+    first_column = 0
+    for bank, columns in PLACE_BANK_COLUMNS:
+        if x < first_column + columns:
+            offset = ((x - first_column) * PLACE_ROWS + y) * PLACE_SIZE
+            data = chunks[bank][offset : offset + PLACE_SIZE]
+            return data[0], data[1], data[2] | (data[3] << 8)
+        first_column += columns
+    raise RuntimeError(f"map coordinate did not resolve to a bank: ({x}, {y})")
+
+
+def maze_step(
+    room_data: bytes, chunks: dict[int, bytes]
+) -> tuple[tuple[int, int], tuple[int, int], int] | None:
+    room_x = room_data[0] | (room_data[1] << 8)
+    room_y = room_data[2] | (room_data[3] << 8)
+    room_width = room_data[4] | (room_data[5] << 8)
+    room_height = room_data[6] | (room_data[7] << 8)
+    directions = ((-1, 0, ord("h")), (1, 0, ord("l")), (0, -1, ord("k")), (0, 1, ord("j")))
+
+    for y in range(max(1, room_y), min(22, room_y + room_height) + 1):
+        for x in range(max(0, room_x), min(79, room_x + room_width) + 1):
+            ch, _, monster = place_from_chunks(chunks, x, y)
+            if ch != PASSAGE or monster:
+                continue
+            for dx, dy, key in directions:
+                target = (x + dx, y + dy)
+                if not (0 <= target[0] < 80 and 1 <= target[1] <= 22):
+                    continue
+                target_ch, _, target_monster = place_from_chunks(
+                    chunks, target[0], target[1]
+                )
+                if target_ch == PASSAGE and not target_monster:
+                    return (x, y), target, key
+    return None
 
 
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
@@ -260,6 +471,14 @@ def main() -> int:
     purse = required_symbol(symbols, "purse")
     playing = required_symbol(symbols, "playing")
     passages = required_symbol(symbols, "passages")
+    dungeon_level = required_symbol(symbols, "level")
+    random_seed = required_symbol(symbols, "seed")
+    rooms = required_symbol(symbols, "rooms")
+    place_bases = {
+        bank: bank_symbol_ram_address(required_symbol(symbols, f"zx_places_bank{bank}"))
+        for bank, _ in PLACE_BANK_COLUMNS
+    }
+    screen_bank3 = bank_symbol_ram_address(required_symbol(symbols, "zx_screen_bank3"))
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
     origin = required_symbol(symbols, "CRT_ORG_CODE")
@@ -279,6 +498,9 @@ def main() -> int:
         ("gold purse", purse),
         ("playing flag", playing),
         ("passage table", passages),
+        ("dungeon level", dungeon_level),
+        ("random seed", random_seed),
+        ("room table", rooms),
         ("player position", player_position),
     ):
         if address >= 0xC000:
@@ -456,6 +678,83 @@ def main() -> int:
         wait_for_ocr(sock, ("Version",), args.timeout)
         print("PASS potion pickup and following S command stay in the game")
 
+        # Modal option editing must use an unshifted 32-column view and restore
+        # the complete logical dungeon afterwards.  BREAK is Caps Shift+Space
+        # on a real Spectrum, so exercise that chord instead of injecting ESC.
+        dungeon_rows_before_options = read_machine_ram(
+            sock, screen_bank3 + 80, 22 * 80
+        )
+        write_bytes(sock, viewport_first_col, 48)
+        write_bytes(sock, last_comm, 0)
+        send_physical_key_until_byte(
+            sock, ord("o"), last_comm, ord("o"), args.timeout, "options command"
+        )
+        options_ocr = wait_for_ocr(
+            sock, ("terse: False", "flush:", "jump:"), args.timeout
+        )
+        if any(line.strip() in ("ue", "rue") for line in options_ocr.splitlines()):
+            raise RuntimeError(f"options screen used the dungeon viewport: {options_ocr!r}")
+        for attempt in range(2):
+            send_break(sock)
+            try:
+                wait_for_ocr(sock, ("--Press space to continue--",), 2.0)
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
+        for attempt in range(2):
+            send_physical_key(sock, ord(" "))
+            try:
+                wait_for_ocr(sock, ("Level:",), 2.0)
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
+        dungeon_rows_after_options = read_machine_ram(
+            sock, screen_bank3 + 80, 22 * 80
+        )
+        if dungeon_rows_after_options != dungeon_rows_before_options:
+            raise RuntimeError("options did not restore the complete logical dungeon")
+        wait_for_byte(sock, viewport_first_col, 48, args.timeout, "options viewport restore")
+        write_bytes(sock, last_comm, 0)
+        send_physical_key_until_byte(
+            sock, ord("v"), last_comm, ord("v"), args.timeout, "command after BREAK"
+        )
+        wait_for_ocr(sock, ("Version",), args.timeout)
+        print("PASS compact options, BREAK cancel, and full dungeon restore")
+
+        # Inventory is a physical overlay: all entries and its prompt are
+        # visible together, while the logical dungeon remains untouched.
+        dungeon_rows_before_inventory = read_machine_ram(
+            sock, screen_bank3 + 80, 22 * 80
+        )
+        write_bytes(sock, last_comm, 0)
+        send_physical_key_until_byte(
+            sock, ord("i"), last_comm, ord("i"), args.timeout, "inventory command"
+        )
+        inventory_ocr = wait_for_ocr(
+            sock, ("a)", "b)", "c)", "--Press space to continue--"), args.timeout
+        )
+        if "--More--" in inventory_ocr:
+            raise RuntimeError("full-screen inventory unexpectedly used --More--")
+        for attempt in range(2):
+            send_physical_key(sock, ord(" "))
+            try:
+                wait_for_ocr(sock, ("Level:",), 2.0)
+                break
+            except RuntimeError:
+                if attempt:
+                    raise
+        dungeon_rows_after_inventory = read_machine_ram(
+            sock, screen_bank3 + 80, 22 * 80
+        )
+        if dungeon_rows_after_inventory != dungeon_rows_before_inventory:
+            raise RuntimeError("inventory modified the logical dungeon")
+        wait_for_byte(
+            sock, viewport_first_col, 48, args.timeout, "inventory viewport restore"
+        )
+        print("PASS full-screen inventory overlay and complete dungeon redraw")
+
         if read_byte(sock, refresh_count) == 0:
             wait_for_byte_change(
                 sock, refresh_count, 0, args.timeout, "initial screen refresh"
@@ -473,9 +772,13 @@ def main() -> int:
         write_bytes(sock, player_room, passages & 0xFF, passages >> 8)
         write_bytes(sock, viewport_first_col, 32)
         write_bytes(sock, last_comm, 0)
-        send_physical_key(sock, ord(" "))
-        wait_for_byte(
-            sock, last_comm, ord(" "), args.timeout, "viewport test command"
+        send_physical_key_until_byte(
+            sock,
+            ord(" "),
+            last_comm,
+            ord(" "),
+            args.timeout,
+            "viewport test command",
         )
         wait_for_byte(sock, viewport_first_col, 40, args.timeout, "corridor viewport")
         write_bytes(sock, player_room, starting_room & 0xFF, starting_room >> 8)
@@ -633,6 +936,116 @@ def main() -> int:
             "PASS wandering monster spawned at valid coordinates "
             f"{wandering_position} without banked scratch corruption"
         )
+
+        # Probe the first and last logical rows on both sides of every map-bank
+        # boundary.  Each injected staircase is read through the production
+        # zx_place_get() path before a complete clear and level regeneration.
+        boundary_coordinates = (
+            (0, 0),
+            (24, 23),
+            (25, 0),
+            (43, 23),
+            (44, 0),
+            (64, 23),
+            (65, 0),
+            (79, 23),
+        )
+        traversed_maze = False
+        for attempt, coordinate in enumerate(boundary_coordinates):
+            previous_turn = read_byte(sock, turn_count)
+            write_word(sock, dungeon_level, 10)
+            write_dword(sock, random_seed, 0x13579BDF + attempt * 0x1021)
+            write_machine_ram(
+                sock,
+                map_cell_ram_address(place_bases, *coordinate),
+                STAIRS,
+            )
+            write_coord(sock, player_position, coordinate)
+            write_bytes(sock, last_comm, ord(">"))
+            send_physical_key_until_word(
+                sock,
+                ord("a"),
+                dungeon_level,
+                11,
+                args.timeout,
+                f"map boundary descent at {coordinate}",
+            )
+            # level is incremented at the beginning of new_level().  Complete
+            # one real turn and wait for the following command-loop refresh so
+            # the next RAM injection cannot race the rest of level generation.
+            completed_turn = send_physical_key_until_byte_change(
+                sock,
+                ord("."),
+                turn_count,
+                previous_turn,
+                args.timeout,
+                f"turn after map boundary {coordinate}",
+            )
+            wait_for_byte(
+                sock,
+                refresh_turn,
+                completed_turn,
+                args.timeout,
+                f"command-loop refresh after map boundary {coordinate}",
+            )
+            if read_byte(sock, playing) != 1 or read_byte(sock, boot_stage) != 0x52:
+                raise RuntimeError(
+                    f"map boundary descent at {coordinate} left the game"
+                )
+            print(f"PASS map boundary descent at {coordinate}")
+
+            room_table = read_bytes(sock, rooms, ROOM_SIZE * 9)
+            maze_rooms = [
+                index
+                for index in range(9)
+                if (
+                    room_table[
+                        index * ROOM_SIZE + ROOM_FLAGS_OFFSET
+                    ]
+                    | (
+                        room_table[
+                            index * ROOM_SIZE + ROOM_FLAGS_OFFSET + 1
+                        ]
+                        << 8
+                    )
+                )
+                & ISMAZE
+            ]
+            if maze_rooms and not traversed_maze:
+                chunks = read_place_chunks(sock, place_bases)
+                for room_index in maze_rooms:
+                    room_data = room_table[
+                        room_index * ROOM_SIZE : (room_index + 1) * ROOM_SIZE
+                    ]
+                    step = maze_step(room_data, chunks)
+                    if step is None:
+                        continue
+                    start, target, key = step
+                    write_coord(sock, player_position, start)
+                    write_bytes(sock, last_comm, 0)
+                    send_physical_key_until_coord(
+                        sock,
+                        key,
+                        player_position,
+                        target,
+                        args.timeout,
+                        "maze traversal",
+                    )
+                    if (
+                        read_byte(sock, playing) != 1
+                        or read_byte(sock, boot_stage) != 0x52
+                    ):
+                        raise RuntimeError("maze traversal left the game")
+                    traversed_maze = True
+                    print(
+                        "PASS generated and traversed a deep-level maze room "
+                        f"from {start} to {target}"
+                    )
+                    break
+
+        print("PASS 24-row map crosses all four bank boundaries without aliasing")
+        if not traversed_maze:
+            raise RuntimeError("fixed deep-level seeds did not produce a traversable maze")
 
         command(sock, f"save-screen {args.screenshot.resolve()}")
         validate_screenshot(args.screenshot)
