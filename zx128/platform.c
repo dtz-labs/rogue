@@ -57,6 +57,12 @@ int main(void)
         if (dnum == 0)
             dnum = 1;
     }
+    /* Building the first level takes a visible moment on a 3.5MHz Z80. The
+       clear() inside new_level() only blanks the buffer and nothing calls
+       refresh() until the dungeon is drawn, so this notice stays on the
+       physical screen for the whole wait without needing a flag. */
+    mvaddstr(11, 1, "Entering the dungeon, wait...");
+    refresh();
     init_probs();
     init_player();
     init_names();
