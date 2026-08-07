@@ -432,9 +432,9 @@ def main() -> int:
         write_bytes(sock, player_room, passages & 0xFF, passages >> 8)
         write_bytes(sock, viewport_first_col, 32)
         write_bytes(sock, last_comm, 0)
-        command(sock, "send-keys-ascii 200 118")
+        send_physical_key(sock, ord(" "))
         wait_for_byte(
-            sock, last_comm, ord("v"), args.timeout, "viewport test command"
+            sock, last_comm, ord(" "), args.timeout, "viewport test command"
         )
         wait_for_byte(sock, viewport_first_col, 40, args.timeout, "corridor viewport")
         write_bytes(sock, player_room, starting_room & 0xFF, starting_room >> 8)
