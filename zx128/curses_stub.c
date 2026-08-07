@@ -2,23 +2,30 @@
 #include <stdarg.h>
 #include <string.h>
 #include "curses.h"
+#include "zx_banking.h"
 
 #define ZX_SCREEN_ROWS 24
 #define ZX_SCREEN_COLS 80
 #define ZX_VISIBLE_COLS 32
 #define ZX_FORMAT_SIZE 160
+#define ZX_NO_VIEWPORT 0xffU
 
 static WINDOW screen_window;
 static WINDOW scratch_window;
 static unsigned char curses_ended;
-static unsigned char physical_row[ZX_VISIBLE_COLS];
+static unsigned char dirty_rows[ZX_SCREEN_ROWS];
+static unsigned char physical_first_col;
+volatile unsigned char zx_rendered_rows;
+volatile unsigned char zx_refresh_count;
+volatile unsigned char zx_refresh_turn;
+
+extern volatile unsigned char zx_turn_count;
 
 void zx_screen_set(unsigned int index, unsigned char value);
 unsigned char zx_screen_get(unsigned int index);
-void zx_screen_copy(unsigned int index, unsigned char *target,
-                    unsigned char count);
 void zx_screen_fill(unsigned int index, unsigned int count,
                     unsigned char value);
+void zx_render_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
 
 WINDOW *stdscr = &screen_window;
 WINDOW *curscr = &screen_window;
@@ -30,6 +37,11 @@ static unsigned int cell_index(WINDOW *win, int y, int x)
     return (unsigned int)(win->_begy + y) * ZX_SCREEN_COLS + win->_begx + x;
 }
 
+static void mark_dirty(unsigned char row)
+{
+    dirty_rows[row] = TRUE;
+}
+
 static int format_to_window(WINDOW *win, const char *fmt, va_list args)
 {
     char buffer[ZX_FORMAT_SIZE];
@@ -38,48 +50,41 @@ static int format_to_window(WINDOW *win, const char *fmt, va_list args)
     return result;
 }
 
-static void draw_physical_cell(unsigned char row, unsigned char col,
-                               unsigned char ch)
-{
-    const unsigned char *glyph;
-    unsigned char scanline;
-
-    if (ch < 32U || ch > 127U)
-        ch = '?';
-    glyph = (const unsigned char *)(0x3d00U +
-            ((unsigned int)(ch - 32U) << 3));
-    for (scanline = 0; scanline < 8U; ++scanline) {
-        unsigned int pixel_y = ((unsigned int)row << 3) + scanline;
-        unsigned int address = 0x4000U
-            + ((pixel_y & 0xc0U) << 5)
-            + ((pixel_y & 0x07U) << 8)
-            + ((pixel_y & 0x38U) << 2)
-            + col;
-        *(unsigned char *)address = glyph[scanline];
-    }
-    ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
-}
-
 static void render_physical_screen(void)
 {
     unsigned char row;
-    unsigned char col;
     unsigned char first_col;
 
-    if (screen_window._curx > ZX_VISIBLE_COLS / 2U)
-        first_col = screen_window._curx - ZX_VISIBLE_COLS / 2U;
-    else
-        first_col = 0;
+    zx_rendered_rows = 0;
+
+    first_col = physical_first_col;
+    if (first_col == ZX_NO_VIEWPORT) {
+        first_col = screen_window._curx > ZX_VISIBLE_COLS / 2U
+            ? screen_window._curx - ZX_VISIBLE_COLS / 2U : 0;
+    } else if (screen_window._cury > 0 &&
+               screen_window._cury < ZX_SCREEN_ROWS - 1U) {
+        if (screen_window._curx < first_col)
+            first_col = screen_window._curx;
+        else if (screen_window._curx >= first_col + ZX_VISIBLE_COLS)
+            first_col = screen_window._curx - ZX_VISIBLE_COLS + 1U;
+    }
     if (first_col > ZX_SCREEN_COLS - ZX_VISIBLE_COLS)
         first_col = ZX_SCREEN_COLS - ZX_VISIBLE_COLS;
+
+    if (first_col != physical_first_col) {
+        for (row = 1; row < ZX_SCREEN_ROWS - 1U; ++row)
+            mark_dirty(row);
+        physical_first_col = first_col;
+    }
 
     for (row = 0; row < ZX_SCREEN_ROWS; ++row) {
         unsigned char row_first = (row == 0 || row == ZX_SCREEN_ROWS - 1)
             ? 0 : first_col;
-        zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS + row_first,
-                       physical_row, ZX_VISIBLE_COLS);
-        for (col = 0; col < ZX_VISIBLE_COLS; ++col)
-            draw_physical_cell(row, col, physical_row[col]);
+        if (!dirty_rows[row])
+            continue;
+        dirty_rows[row] = FALSE;
+        ++zx_rendered_rows;
+        zx_render_row(row, row_first);
     }
 }
 
@@ -89,6 +94,7 @@ WINDOW *initscr(void)
     screen_window._maxy = ZX_SCREEN_ROWS;
     screen_window._maxx = ZX_SCREEN_COLS;
     curses_ended = FALSE;
+    physical_first_col = ZX_NO_VIEWPORT;
     erase();
     return stdscr;
 }
@@ -132,6 +138,8 @@ int mvcur(int old_y, int old_x, int new_y, int new_x)
 
 int waddch(WINDOW *win, int ch)
 {
+    unsigned char row;
+
     if (ch == '\n') {
         win->_curx = 0;
         if (win->_cury + 1 < win->_maxy)
@@ -140,7 +148,9 @@ int waddch(WINDOW *win, int ch)
     }
     if (win->_cury >= win->_maxy || win->_curx >= win->_maxx)
         return ERR;
+    row = win->_begy + win->_cury;
     zx_screen_set(cell_index(win, win->_cury, win->_curx), (unsigned char)ch);
+    mark_dirty(row);
     if (++win->_curx >= win->_maxx) {
         win->_curx = 0;
         if (win->_cury + 1 < win->_maxy)
@@ -213,14 +223,22 @@ int mvwprintw(WINDOW *win, int y, int x, const char *fmt, ...)
     return result;
 }
 
-int refresh(void) { render_physical_screen(); return OK; }
+int refresh(void)
+{
+    render_physical_screen();
+    zx_refresh_turn = zx_turn_count;
+    ++zx_refresh_count;
+    return OK;
+}
 int wrefresh(WINDOW *win) { (void)win; return refresh(); }
 
 int werase(WINDOW *win)
 {
     int y;
-    for (y = 0; y < win->_maxy; ++y)
+    for (y = 0; y < win->_maxy; ++y) {
         zx_screen_fill(cell_index(win, y, 0), win->_maxx, ' ');
+        mark_dirty(win->_begy + y);
+    }
     return wmove(win, 0, 0);
 }
 
@@ -232,6 +250,7 @@ int wclrtoeol(WINDOW *win)
 {
     zx_screen_fill(cell_index(win, win->_cury, win->_curx),
                    win->_maxx - win->_curx, ' ');
+    mark_dirty(win->_begy + win->_cury);
     return OK;
 }
 
@@ -258,8 +277,18 @@ int mvwin(WINDOW *win, int y, int x)
     return OK;
 }
 
-int touchwin(WINDOW *win) { (void)win; return OK; }
-int clearok(WINDOW *win, int flag) { (void)win; (void)flag; return OK; }
+int touchwin(WINDOW *win)
+{
+    (void)win;
+    memset(dirty_rows, TRUE, sizeof dirty_rows);
+    return OK;
+}
+int clearok(WINDOW *win, int flag)
+{
+    if (flag)
+        touchwin(win);
+    return OK;
+}
 int idlok(WINDOW *win, int flag) { (void)win; (void)flag; return OK; }
 int leaveok(WINDOW *win, int flag) { (void)win; (void)flag; return OK; }
 int keypad(WINDOW *win, int flag) { (void)win; (void)flag; return OK; }
@@ -272,7 +301,7 @@ int beep(void) { return OK; }
 
 int getch(void)
 {
-    return getchar();
+    return fgetc_cons();
 }
 
 int wgetnstr(WINDOW *win, char *str, int length)

@@ -243,10 +243,10 @@ do_maze(struct room *rp)
 void
 dig(int y, int x)
 {
-    coord *cp;
+    const coord *cp;
     int cnt, newy, newx, nexty = 0, nextx = 0;
     static coord pos;
-    static coord del[4] = {
+    static const coord del[4] = {
 	{2, 0}, {-2, 0}, {0, 2}, {0, -2}
     };
 

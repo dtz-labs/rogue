@@ -9,18 +9,25 @@ Current scope:
 - upstream baseline: `modern-rogue` at commit
   `546829b745ab8b1bca39b14f8bac5defd6c13fac`;
 - z88dk classic `+zx` CRT with the SDCC frontend;
+- SDCC keeps `IY` reserved for the Spectrum ROM keyboard/system variables;
 - pageable code/data in banks 0, 1, 3, 4, 6 and 7;
 - banks 2 and 5 remain the Spectrum's fixed RAM pages;
 - save/restore, score files, shell escape, signals and Unix account handling
   are replaced by a small ZX platform layer;
 - `curses_stub.c` keeps an 80x24 logical screen in banked RAM and renders a
-  horizontally tracked 32-column viewport with the Spectrum ROM font.
+  horizontally tracked 32-column viewport with the Spectrum ROM font;
+- refreshes redraw only changed character rows; the viewport remains stable
+  until the player moves outside its visible 32-column range.
 
 The generated TAP boots to Rogue's first level, draws the dungeon and status
 line, accepts keyboard input and executes turns.  This is still a bring-up
 milestone rather than a complete port: save/score files are disabled, the
 viewport is intentionally narrow, and the remaining cross-bank pointer
 lifetimes and less common gameplay paths still need auditing.
+
+Descending with `>` has been checked in ZEsarUX: level 2 is generated and the
+command loop continues.  Maze direction data is kept in banked read-only data,
+so it is no longer lost while another RAM page is visible during startup.
 
 The first complete link and its fixed-memory blocker are recorded in
 [`MEMORY.md`](MEMORY.md).
@@ -93,6 +100,8 @@ make -C zx128 smoke-zesarux Z88DK=../z88dk
 ```
 
 It boots the TAP headlessly, waits for Rogue's command loop, verifies the BASIC
-loader and rendered screen through ZEsarUX's remote protocol, sends `.` and
-checks that exactly one turn completes.  It also writes a captured Spectrum
-screen to `zx128/build/rogue-zx128-smoke.pbm`.
+loader and rendered screen through ZEsarUX's remote protocol, checks that the
+ROM keyboard state is intact, sends a physical `S` key event, then sends `.`
+and checks that exactly one turn completes.  It also verifies that an ordinary
+turn redraws fewer than 24 rows and writes a captured Spectrum screen to
+`zx128/build/rogue-zx128-smoke.pbm`.

@@ -107,6 +107,19 @@ def wait_for_byte(
     raise RuntimeError(f"{label} did not reach 0x{expected:02X}; last value was {shown}")
 
 
+def wait_for_byte_change(
+    sock: socket.socket, address: int, previous: int, timeout: float, label: str
+) -> int:
+    deadline = time.monotonic() + timeout
+    last = previous
+    while time.monotonic() < deadline:
+        last = read_byte(sock, address)
+        if last != previous:
+            return last
+        time.sleep(0.05)
+    raise RuntimeError(f"{label} remained at 0x{last:02X}")
+
+
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
     deadline = time.monotonic() + timeout
@@ -139,8 +152,19 @@ def main() -> int:
     symbols = symbols_from_map(args.map_path)
     boot_stage = required_symbol(symbols, "zx_boot_stage")
     turn_count = required_symbol(symbols, "zx_turn_count")
+    last_comm = required_symbol(symbols, "last_comm")
+    rendered_rows = required_symbol(symbols, "zx_rendered_rows")
+    refresh_count = required_symbol(symbols, "zx_refresh_count")
+    refresh_turn = required_symbol(symbols, "zx_refresh_turn")
     origin = required_symbol(symbols, "CRT_ORG_CODE")
-    for label, address in (("boot marker", boot_stage), ("turn counter", turn_count)):
+    for label, address in (
+        ("boot marker", boot_stage),
+        ("turn counter", turn_count),
+        ("last command", last_comm),
+        ("rendered-row counter", rendered_rows),
+        ("refresh counter", refresh_count),
+        ("refresh-turn snapshot", refresh_turn),
+    ):
         if address >= 0xC000:
             raise RuntimeError(f"{label} is bank-dependent at 0x{address:04X}")
 
@@ -190,21 +214,51 @@ def main() -> int:
         wait_for_rendered_game(sock, min(args.timeout, 5.0))
         print("PASS renderer shows the Rogue map, hero and status line")
 
-        # The command-loop marker is set just before command() performs its
-        # own bookkeeping and reaches getchar().  Give the emulated keyboard
-        # scanner a few frames so a short synthetic key press is not lost.
-        time.sleep(1.0)
-        before = read_byte(sock, turn_count)
-        command(sock, "send-keys-ascii 200 46")
+        registers = command(sock, "get-registers")
+        if not re.search(r"\bIY=5C3A\b", registers, re.IGNORECASE):
+            raise RuntimeError(f"ROM system-variable base was not preserved: {registers!r}")
+        print("PASS IY preserves the Spectrum ROM system-variable base")
+
+        if read_byte(sock, refresh_count) == 0:
+            wait_for_byte_change(
+                sock, refresh_count, 0, args.timeout, "initial screen refresh"
+            )
+        before_physical = read_byte(sock, turn_count)
+        command(sock, "send-keys-event 115 1")
+        time.sleep(0.1)
+        command(sock, "send-keys-event 115 0")
+        wait_for_byte(sock, last_comm, ord("s"), args.timeout, "physical S key")
+        after_physical = (before_physical + 1) & 0xFF
         wait_for_byte(
             sock,
             turn_count,
-            (before + 1) & 0xFF,
+            after_physical,
+            args.timeout,
+            "physical S turn",
+        )
+        wait_for_byte(
+            sock, refresh_turn, after_physical, args.timeout, "post-S refresh"
+        )
+        print("PASS physical keyboard event decodes as ASCII 's' and executes a turn")
+
+        before = read_byte(sock, turn_count)
+        command(sock, "send-keys-ascii 200 46")
+        wait_for_byte(sock, last_comm, ord("."), args.timeout, "wait command")
+        after = (before + 1) & 0xFF
+        wait_for_byte(
+            sock,
+            turn_count,
+            after,
             args.timeout,
             "turn counter",
         )
-        wait_for_byte(sock, boot_stage, 0x52, args.timeout, "command loop")
-        print(f"PASS '.' executed one turn ({before} -> {(before + 1) & 0xFF})")
+        wait_for_byte(sock, refresh_turn, after, args.timeout, "post-wait refresh")
+        print(f"PASS '.' executed one turn ({before} -> {after})")
+
+        rows = read_byte(sock, rendered_rows)
+        if rows == 0 or rows >= 24:
+            raise RuntimeError(f"partial refresh drew {rows} rows after one turn")
+        print(f"PASS partial refresh drew {rows}/24 rows after one turn")
 
         command(sock, f"save-screen {args.screenshot.resolve()}")
         validate_screenshot(args.screenshot)

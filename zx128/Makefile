@@ -26,7 +26,7 @@ TAP := $(BASENAME).tap
 CPPFLAGS := -DZX128 -Iinclude -I$(ROOT)
 OPT ?= -SO2 --max-allocs-per-node10000
 WARNFLAGS ?= --less-pedantic
-CFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn $(CPPFLAGS)
+CFLAGS := +zx -compiler=sdcc --reserve-regs-iy $(OPT) $(WARNFLAGS) -vn $(CPPFLAGS)
 LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-define:CRT_ORG_CODE=0x6000 \
 	-pragma-define:REGISTER_SP=0xbfff \
@@ -40,7 +40,7 @@ BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
 BANK3_NAMES := init misc monsters wizard vers rip_zx
 BANK4_NAMES := potions scrolls sticks weapons
-BANK6_NAMES := chase fight daemons
+BANK6_NAMES := chase fight daemons renderer
 BANK7_NAMES := new_level rooms passages daemon list
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
