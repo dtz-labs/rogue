@@ -196,7 +196,12 @@ init_weapon(THING *weap, int which)
 int
 hit_monster(int y, int x, THING *obj)
 {
+#ifdef ZX128
+    /* fight() runs in another bank, so keep its argument on the fixed stack. */
+    coord mp;
+#else
     static coord mp;
+#endif
 
     mp.y = y;
     mp.x = x;

@@ -30,7 +30,12 @@ read_scroll()
     bool discardit = FALSE;
     struct room *cur_room;
     THING *orig_obj;
+#ifdef ZX128
+    /* new_monster() must receive a coordinate in fixed memory. */
+    coord mp;
+#else
     static coord mp;
+#endif
 
     obj = get_item("read", SCROLL);
     if (obj == NULL)

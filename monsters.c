@@ -119,7 +119,17 @@ void
 wanderer()
 {
     THING *tp;
+#ifdef ZX128
+    /*
+     * Keep this scratch coordinate on the fixed stack.  wanderer() lives in
+     * bank 3, while find_floor() and roomin() page in banks 7 and 6.  A
+     * pointer to bank-3 static storage would therefore refer to unrelated
+     * bytes as soon as either callee switched banks.
+     */
     coord cp;
+#else
+    static coord cp;
+#endif
 
     tp = new_item();
     do

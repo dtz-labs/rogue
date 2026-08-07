@@ -197,7 +197,12 @@ treas_room()
     THING *tp;
     struct room *rp;
     int spots, num_monst;
+#ifdef ZX128
+    /* new_monster() pages out the bank that owns treas_room(). */
+    coord mp;
+#else
     static coord mp;
+#endif
 
     rp = &rooms[rnd_room()];
     spots = (rp->r_max.y - 2) * (rp->r_max.x - 2) - MINTREAS;

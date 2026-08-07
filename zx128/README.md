@@ -107,5 +107,7 @@ loader and rendered screen through ZEsarUX's remote protocol, checks that the
 ROM keyboard state is intact, sends an emulated `L` keyboard-matrix event, and
 verifies that the hero actually moves right.  It then sends `.` and checks that
 exactly one turn completes.  It also verifies that an ordinary turn redraws
-fewer than 24 rows and writes a captured Spectrum screen to
+fewer than 24 rows.  Finally, it advances the wandering-monster timer, checks
+that the new monster has valid fixed-memory coordinates rather than a banked
+scratch pointer, and writes a captured Spectrum screen to
 `zx128/build/rogue-zx128-smoke.pbm`.

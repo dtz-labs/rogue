@@ -14,6 +14,7 @@ from pathlib import Path
 
 PROMPT = b"command> "
 SYMBOL_RE = re.compile(r"^(\S+)\s*=\s*\$([0-9A-Fa-f]+)\b", re.MULTILINE)
+THING_POSITION_OFFSET = 4
 
 
 def parse_args() -> argparse.Namespace:
@@ -103,8 +104,8 @@ def write_bytes(sock: socket.socket, address: int, values: list[int]) -> None:
 
 
 def read_coord(sock: socket.socket, address: int) -> tuple[int, int]:
-    x = read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
-    y = read_byte(sock, address + 2) | (read_byte(sock, address + 3) << 8)
+    x = read_word(sock, address)
+    y = read_word(sock, address + 2)
     return x, y
 
 
@@ -175,7 +176,7 @@ def main() -> int:
     random_move_scratch = required_symbol(symbols, "rndmove_ret")
     monster_list = required_symbol(symbols, "mlist")
     # THING starts with two 16-bit list pointers on this target.
-    player_position = required_symbol(symbols, "player") + 4
+    player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
     origin = required_symbol(symbols, "CRT_ORG_CODE")
     for label, address in (
         ("boot marker", boot_stage),
@@ -186,7 +187,7 @@ def main() -> int:
         ("refresh-turn snapshot", refresh_turn),
         ("movement scratch", movement_scratch),
         ("random-move scratch", random_move_scratch),
-        ("monster list", monster_list),
+        ("monster-list head", monster_list),
         ("player position", player_position),
     ):
         if address >= 0xC000:
@@ -294,34 +295,66 @@ def main() -> int:
             raise RuntimeError(f"partial refresh drew {rows} rows after one turn")
         print(f"PASS partial refresh drew {rows}/24 rows after one turn")
 
+        # Remove the level's original monsters so the wandering-monster fuse
+        # can run without combat cancelling the wait.
+        write_bytes(sock, monster_list, [0, 0])
+        if read_word(sock, monster_list) != 0:
+            raise RuntimeError("could not detach initial monsters")
+
+        wandering_monster = 0
+        wanderer_turns = 0
+        while wanderer_turns < 96:
+            before = read_byte(sock, turn_count)
+            # One ZRCP command inserts release events between identical keys,
+            # avoiding the Spectrum ROM's repeated-key suppression.
+            command(sock, "send-keys-ascii 80 46 46 46 46")
+            time.sleep(0.12)
+            after = read_byte(sock, turn_count)
+            if after == before:
+                after = wait_for_byte_change(
+                    sock, turn_count, before, args.timeout, "wanderer wait batch"
+                )
+            advanced = (after - before) & 0xFF
+            if advanced > 4:
+                raise RuntimeError(
+                    f"wanderer wait batch advanced {advanced} turns, expected at most 4"
+                )
+            wanderer_turns += advanced
+            wandering_monster = read_word(sock, monster_list)
+            if wandering_monster:
+                break
+        else:
+            raise RuntimeError(
+                f"wandering monster did not appear within {wanderer_turns} turns"
+            )
+
+        if wandering_monster >= 0xC000:
+            raise RuntimeError(
+                "wandering monster is not in fixed memory: "
+                f"0x{wandering_monster:04X}"
+            )
+        wandering_position = read_coord(
+            sock, wandering_monster + THING_POSITION_OFFSET
+        )
+        if not (
+            0 <= wandering_position[0] < 80
+            and 0 < wandering_position[1] < 23
+        ):
+            raise RuntimeError(
+                "wandering monster has invalid coordinates: "
+                f"{wandering_position} at 0x{wandering_monster:04X}"
+            )
+        ocr = command(sock, "get-ocr")
+        if "bizarre place" in ocr.lower():
+            raise RuntimeError(f"wanderer triggered roomin corruption: {ocr!r}")
+        print(
+            "PASS wandering monster spawned at valid coordinates "
+            f"{wandering_position} without banked scratch corruption"
+        )
+
         command(sock, f"save-screen {args.screenshot.resolve()}")
         validate_screenshot(args.screenshot)
         print(f"PASS captured 256x192 screen: {args.screenshot}")
-
-        # Remove the level's original monsters so a repeated search command can
-        # reach the deterministic wandering-monster fuse without combat
-        # cancelling the count.  wanderer() crosses banks 3, 7 and 6 while
-        # passing its candidate coordinate, which previously corrupted it.
-        write_bytes(sock, monster_list, [0, 0])
-        before_wanderer = read_byte(sock, turn_count)
-        command(sock, "send-keys-ascii 100 57 57 115")  # 99s
-        after_wanderer = (before_wanderer + 99) & 0xFF
-        wait_for_byte(
-            sock,
-            turn_count,
-            after_wanderer,
-            args.timeout,
-            "wandering-monster search count",
-        )
-        if read_word(sock, monster_list) == 0:
-            raise RuntimeError("wandering-monster fuse did not create a monster")
-        ocr = command(sock, "get-ocr")
-        if "bizarre place" in ocr.lower():
-            raise RuntimeError(f"wandering monster corrupted its coordinate: {ocr!r}")
-        print(
-            "PASS wandering monster survives banked coordinate handoff "
-            f"({before_wanderer} -> {after_wanderer})"
-        )
 
         sock.sendall(b"exit-emulator\n")
         sock.close()

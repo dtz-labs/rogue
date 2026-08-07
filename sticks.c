@@ -51,7 +51,12 @@ do_zap()
     int y, x;
     char *name;
     char monster, oldch;
+#ifdef ZX128
+    /* hit_monster() ultimately passes this object into another bank. */
+    THING bolt;
+#else
     static THING bolt;
+#endif
 
     if ((obj = get_item("zap with", STICK)) == NULL)
 	return;
@@ -179,6 +184,9 @@ do_zap()
 	    bolt.o_hplus = 100;
 	    bolt.o_dplus = 1;
 	    bolt.o_flags = ISMISL;
+#ifdef ZX128
+	    bolt.o_launch = -1;
+#endif
 	    if (cur_weapon != NULL)
 		bolt.o_launch = cur_weapon->o_which;
 	    do_motion(&bolt, delta.y, delta.x);
@@ -303,7 +311,12 @@ fire_bolt(coord *start, coord *dir, char *name)
     THING *tp;
     char dirch = 0, ch;
     bool hit_hero, used, changed;
+#ifdef ZX128
+    /* runto() executes in another bank. */
+    coord pos;
+#else
     static coord pos;
+#endif
     static coord spotpos[BOLT_LENGTH];
     THING bolt;
 

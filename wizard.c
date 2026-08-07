@@ -199,7 +199,12 @@ create_obj()
 void
 teleport()
 {
+#ifdef ZX128
+    /* find_floor() and roomin() page out wizard.c's bank. */
+    coord c;
+#else
     static coord c;
+#endif
 
     mvaddch(hero.y, hero.x, floor_at());
     find_floor((struct room *) NULL, &c, FALSE, TRUE);

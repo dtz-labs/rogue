@@ -12,6 +12,15 @@ from pathlib import Path
 BANK_WINDOW_ORIGIN = 0xC000
 BANK_SIZE = 0x4000
 FORBIDDEN_BANKS = {2, 5}
+FORBIDDEN_PAGEABLE_SCRATCH_PREFIXES = (
+    "_do_zap_bolt_",
+    "_fire_bolt_pos_",
+    "_hit_monster_mp_",
+    "_read_scroll_mp_",
+    "_teleport_c_",
+    "_treas_room_mp_",
+    "_wanderer_cp_",
+)
 
 SYMBOL_RE = re.compile(r"^(\S+)\s*=\s*\$([0-9A-Fa-f]+)\b")
 BANK_FILE_RE_TEMPLATE = r"^{stem}_BANK_(\d+)\.bin$"
@@ -86,6 +95,15 @@ def main() -> int:
         return 1
 
     symbols = read_symbols(args.map_path)
+    for name, address in symbols.items():
+        if (
+            name.startswith(FORBIDDEN_PAGEABLE_SCRATCH_PREFIXES)
+            and (address & 0xFFFF) >= BANK_WINDOW_ORIGIN
+        ):
+            errors.append(
+                f"cross-bank scratch {name} is static in the pageable window "
+                f"at 0x{address & 0xFFFF:04X}"
+            )
     stack_top = symbols.get("REGISTER_SP", BANK_WINDOW_ORIGIN)
     mapped_stack_reserve = symbols.get("__crt_stack_size")
     if (
