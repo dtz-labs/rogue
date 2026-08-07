@@ -6,6 +6,10 @@
 volatile unsigned char zx_boot_stage;
 volatile unsigned char zx_turn_count;
 
+static bool zx_seed_collecting;
+
+extern unsigned char _BSS_7_head[], _BSS_7_tail[];
+
 /* Passed from bank 0 movement code to bank 6/7 helpers. */
 coord nh;
 coord rndmove_ret;
@@ -16,13 +20,39 @@ static void stop_forever(void)
         ;
 }
 
+void zx_wait_for_key_release(void)
+{
+__asm
+zx_wait_for_key_release_loop:
+    xor a
+    in a, (0xfe)
+    and 0x1f
+    cp 0x1f
+    jr nz, zx_wait_for_key_release_loop
+__endasm;
+}
+
 int main(void)
 {
+    bool named_hero;
+
+    zx_restart_snapshot_init();
     strcpy(fruit, "slime-mold");
     dnum = 1;
     seed = 0x13579bdfL;
 
     initscr();
+    zx_seed_collecting = TRUE;
+    zx_startup_help();
+    named_hero = zx_startup_name();
+    zx_seed_collecting = FALSE;
+    if (!named_hero)
+        seed = 0x13579bdfL;
+    else {
+        dnum = (int)(seed & 0x7fffU);
+        if (dnum == 0)
+            dnum = 1;
+    }
     init_probs();
     init_player();
     init_names();
@@ -39,6 +69,26 @@ int main(void)
     start_daemon(zx_cb_stomach, 0, AFTER);
     playit();
     return 0;
+}
+
+static void zx_restart_enter(void) __naked
+{
+__asm
+    di
+    ld a, 0x10
+    ld (0x5b5c), a
+    ld bc, 0x7ffd
+    out (c), a
+    ei
+    jp 0x6003
+__endasm;
+}
+
+void zx_restart_finish(void)
+{
+    zx_bank_clear(7, _BSS_7_head,
+                  (unsigned int)(_BSS_7_tail - _BSS_7_head));
+    zx_restart_enter();
 }
 
 int rnd(int range)
@@ -78,7 +128,9 @@ void quit(int ignored)
         playing = FALSE;
         clear();
         mvprintw(LINES - 2, 0, "You quit with %d gold pieces", purse);
+        mvaddstr(15, 7, "Press R to restart");
         refresh();
+        zx_wait_for_restart();
         stop_forever();
     }
     move(old_y, old_x);
@@ -114,7 +166,15 @@ void playltchars(void) { }
 void md_init(void) { }
 int md_readchar(void)
 {
+    unsigned int before = *(volatile unsigned int *)0x5c78;
     int ch = getch();
+
+    if (zx_seed_collecting) {
+        unsigned int elapsed =
+            *(volatile unsigned int *)0x5c78 - before;
+        seed = seed * 11109UL + 13849UL +
+            ((rogue_seed_t)elapsed << 8) + (unsigned char)ch;
+    }
 
     return ch == ' ' && zx_break() ? ESCAPE : ch;
 }

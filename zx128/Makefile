@@ -45,9 +45,9 @@ FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data
 BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
 BANK3_NAMES := init misc monsters wizard vers rip_zx
-BANK4_NAMES := potions scrolls sticks weapons
+BANK4_NAMES := potions scrolls sticks weapons restart_storage
 BANK6_NAMES := chase fight daemons renderer viewport message
-BANK7_NAMES := new_level rooms passages daemon list screen_snapshot
+BANK7_NAMES := new_level rooms passages daemon list screen_snapshot restart_snapshot
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
 	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES)))
@@ -63,7 +63,7 @@ OBJS := $(FIXED_OBJS) $(BANK0_OBJS) $(BANK1_OBJS) $(BANK3_OBJS) \
 	$(BUILD)/bank3/bank_storage.o $(BUILD)/bank4/bank_storage.o
 COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
 	include/curses.h include/zx_banking.h include/zx_message.h \
-	include/zx_places.h
+	include/zx_places.h include/zx_restart.h
 
 $(OBJS): $(COMMON_DEPS)
 

@@ -731,6 +731,19 @@ void	whatis(bool insist, int type) ZX_BANKED_3;
 void	wield() ZX_BANKED_4;
 
 #ifdef ZX128
+void zx_bank_read(unsigned char bank, const unsigned char *source,
+	unsigned char *target, unsigned char count);
+void zx_bank_write(unsigned char bank, unsigned char *target,
+	const unsigned char *source, unsigned char count);
+void zx_bank_clear(unsigned char bank, unsigned char *start,
+	unsigned int count);
+void zx_restart_snapshot_init(void) ZX_BANKED_7;
+void zx_restart_game(void) ZX_BANKED_7;
+void zx_restart_finish(void);
+void zx_wait_for_key_release(void);
+void zx_wait_for_restart(void) ZX_BANKED_3;
+void zx_startup_help(void) ZX_BANKED_0;
+bool zx_startup_name(void) ZX_BANKED_1;
 void zx_update_viewport(void) ZX_BANKED_6;
 void zx_copy_bank3_string(char *target, const char *source,
 	unsigned char size) ZX_BANKED_3;

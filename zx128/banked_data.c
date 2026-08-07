@@ -34,6 +34,30 @@ static void restore_page(unsigned char old_state)
     intrinsic_ei();
 }
 
+void zx_bank_read(unsigned char bank, const unsigned char *source,
+                  unsigned char *target, unsigned char count)
+{
+    unsigned char old_state = page_bank(bank);
+    memcpy(target, source, count);
+    restore_page(old_state);
+}
+
+void zx_bank_write(unsigned char bank, unsigned char *target,
+                   const unsigned char *source, unsigned char count)
+{
+    unsigned char old_state = page_bank(bank);
+    memcpy(target, source, count);
+    restore_page(old_state);
+}
+
+void zx_bank_clear(unsigned char bank, unsigned char *start,
+                   unsigned int count)
+{
+    unsigned char old_state = page_bank(bank);
+    memset(start, 0, count);
+    restore_page(old_state);
+}
+
 static PLACE *place_address(unsigned int index, unsigned char *bank)
 {
     if (index < ZX_PLACE_BANK0_COUNT) {

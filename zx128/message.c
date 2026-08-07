@@ -15,7 +15,7 @@ int endmsg(void)
 
     /* A second short message can use the free physical message row. */
     if (mpos && mpos <= ZX_MSG_COLS && zx_msg_newpos &&
-        zx_msg_newpos <= ZX_MSG_COLS - (sizeof "--More--" - 1))
+        zx_msg_newpos <= ZX_MSG_COLS)
     {
         mvaddstr(0, ZX_MSG_COLS, zx_msgbuf);
         clrtoeol();

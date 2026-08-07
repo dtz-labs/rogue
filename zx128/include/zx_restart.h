@@ -1,0 +1,14 @@
+#ifndef ROGUE_ZX_RESTART_H
+#define ROGUE_ZX_RESTART_H
+
+/* Pristine DATA images captured before main() changes any game tables. */
+#define ZX_RESTART_FIXED_DATA_SIZE 0x0ba3U
+#define ZX_RESTART_BANK0_DATA_SIZE 0x0108U
+#define ZX_RESTART_BANK1_DATA_SIZE 0x01adU
+#define ZX_RESTART_BANK3_DATA_SIZE 0x026eU
+#define ZX_RESTART_BANK4_DATA_SIZE 0x00cdU
+#define ZX_RESTART_BANK6_DATA_SIZE 0x00a2U
+#define ZX_RESTART_BANK7_DATA_SIZE 0x00a0U
+#define ZX_RESTART_BANKED_DATA_SIZE 0x0732U
+
+#endif

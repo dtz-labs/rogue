@@ -15,7 +15,16 @@ from pathlib import Path
 PROMPT = b"command> "
 SYMBOL_RE = re.compile(r"^(\S+)\s*=\s*\$([0-9A-Fa-f]+)\b", re.MULTILINE)
 THING_POSITION_OFFSET = 4
+THING_TURN_OFFSET = 8
+THING_DEST_OFFSET = 12
+THING_FLAGS_OFFSET = 14
+THING_STATS_LEVEL_OFFSET = 22
+THING_STATS_ARMOR_OFFSET = 24
+THING_STATS_HP_OFFSET = 26
+THING_STATS_DAMAGE_OFFSET = 28
+THING_STATS_MAX_HP_OFFSET = 41
 THING_ROOM_OFFSET = 43
+THING_PACK_OFFSET = 45
 OBJECT_TYPE_OFFSET = 4
 OBJECT_POSITION_OFFSET = 6
 OBJECT_COUNT_OFFSET = 31
@@ -29,6 +38,9 @@ PLACE_SIZE = 4
 ROOM_SIZE = 66
 ROOM_FLAGS_OFFSET = 14
 ISMAZE = 0x04
+ISRUN = 0x2000
+F_REAL = 0x10
+FLOOR = ord(".")
 PASSAGE = ord("#")
 STAIRS = ord("%")
 PLACE_BANK_COLUMNS = ((0, 25), (1, 19), (3, 21), (4, 15))
@@ -145,6 +157,10 @@ def read_bytes(sock: socket.socket, address: int, count: int) -> bytes:
 
 def read_word(sock: socket.socket, address: int) -> int:
     return read_byte(sock, address) | (read_byte(sock, address + 1) << 8)
+
+
+def read_dword(sock: socket.socket, address: int) -> int:
+    return read_word(sock, address) | (read_word(sock, address + 2) << 16)
 
 
 def write_bytes(sock: socket.socket, address: int, *values: int) -> None:
@@ -349,6 +365,30 @@ def send_physical_key_until_coord(
     raise RuntimeError(f"{label} did not reach {expected}; last value was {last}")
 
 
+def send_physical_key_until_ocr(
+    sock: socket.socket,
+    key: int,
+    needles: tuple[str, ...],
+    timeout: float,
+    label: str,
+) -> str:
+    """Retry a dropped physical key until the expected screen state appears."""
+    deadline = time.monotonic() + timeout
+    last = ""
+    while time.monotonic() < deadline:
+        last = command(sock, "get-ocr")
+        if all(needle in last for needle in needles):
+            return last
+        send_physical_key(sock, key)
+        attempt_deadline = min(deadline, time.monotonic() + 2.0)
+        while time.monotonic() < attempt_deadline:
+            last = command(sock, "get-ocr")
+            if all(needle in last for needle in needles):
+                return last
+            time.sleep(0.05)
+    raise RuntimeError(f"{label} did not show {needles!r}: {last!r}")
+
+
 def read_place_chunks(
     sock: socket.socket, place_bases: dict[int, int]
 ) -> dict[int, bytes]:
@@ -473,7 +513,10 @@ def main() -> int:
     passages = required_symbol(symbols, "passages")
     dungeon_level = required_symbol(symbols, "level")
     random_seed = required_symbol(symbols, "seed")
+    dungeon_number = required_symbol(symbols, "dnum")
+    food_remaining = required_symbol(symbols, "food_left")
     rooms = required_symbol(symbols, "rooms")
+    hero_name = required_symbol(symbols, "whoami")
     place_bases = {
         bank: bank_symbol_ram_address(required_symbol(symbols, f"zx_places_bank{bank}"))
         for bank, _ in PLACE_BANK_COLUMNS
@@ -481,6 +524,7 @@ def main() -> int:
     screen_bank3 = bank_symbol_ram_address(required_symbol(symbols, "zx_screen_bank3"))
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
+    player_pack = required_symbol(symbols, "player") + THING_PACK_OFFSET
     origin = required_symbol(symbols, "CRT_ORG_CODE")
     for label, address in (
         ("boot marker", boot_stage),
@@ -500,8 +544,11 @@ def main() -> int:
         ("passage table", passages),
         ("dungeon level", dungeon_level),
         ("random seed", random_seed),
+        ("dungeon number", dungeon_number),
+        ("food counter", food_remaining),
         ("room table", rooms),
         ("player position", player_position),
+        ("player pack", player_pack),
     ):
         if address >= 0xC000:
             raise RuntimeError(f"{label} is bank-dependent at 0x{address:04X}")
@@ -535,7 +582,26 @@ def main() -> int:
     exited_cleanly = False
     try:
         sock = connect(proc, port, min(args.timeout, 10.0))
+        wait_for_byte(sock, boot_stage, ord("H"), args.timeout, "startup help")
+        startup_help = wait_for_ocr(
+            sock, ("ROGUE ZX128 - KEYS", "SPACE - enter your name"), args.timeout
+        )
+        if "--More--" in startup_help:
+            raise RuntimeError("startup help unexpectedly used --More--")
+        send_physical_key_until_byte(
+            sock, ord(" "), boot_stage, ord("N"), args.timeout, "name prompt"
+        )
+        wait_for_ocr(sock, ("Name your hero", "ENTER keeps the name Rogue"), args.timeout)
+        for attempt in range(3):
+            command(sock, "send-keys-ascii 200 13")
+            try:
+                wait_for_byte(sock, boot_stage, 0x52, 2.0, "command loop")
+                break
+            except RuntimeError:
+                if attempt == 2:
+                    raise
         wait_for_byte(sock, boot_stage, 0x52, args.timeout, "command loop")
+        print("PASS startup quick help and default-name prompt")
         print(f"PASS boot reached command loop (stage=0x52 at 0x{boot_stage:04X})")
 
         basic = command(sock, "view-basic")
@@ -551,6 +617,8 @@ def main() -> int:
 
         wait_for_rendered_game(sock, min(args.timeout, 5.0))
         print("PASS renderer shows the Rogue map, hero and status line")
+        initial_pack = read_word(sock, player_pack)
+        initial_game_seed = read_dword(sock, random_seed)
         wait_for_byte(sock, viewport_first_col, 48, args.timeout, "room viewport")
         print("PASS room-aware viewport shows the complete starting room at column 48")
 
@@ -564,6 +632,115 @@ def main() -> int:
             raise RuntimeError(
                 f"initial monster list has invalid head: 0x{initial_monster:04X}"
             )
+
+        # Exercise the real two-message combat path before detaching the level
+        # monsters.  A forced player miss is exactly 32 characters and the
+        # runner's forced counter-miss is 31, so the second message only fits
+        # after the renderer's full second line is admitted by endmsg().
+        hero_x, hero_y = read_coord(sock, player_position)
+        if hero_x + 1 < 80:
+            combat_target = (hero_x + 1, hero_y)
+            combat_key = ord("l")
+        else:
+            combat_target = (hero_x - 1, hero_y)
+            combat_key = ord("h")
+        old_monster_position = read_coord(
+            sock, initial_monster + THING_POSITION_OFFSET
+        )
+        touched_cells = {old_monster_position, combat_target}
+        for x in range(combat_target[0] - 1, combat_target[0] + 2):
+            for y in range(combat_target[1] - 1, combat_target[1] + 2):
+                if (
+                    0 <= x < 80
+                    and 0 <= y < PLACE_ROWS
+                    and (x, y) != (hero_x, hero_y)
+                ):
+                    touched_cells.add((x, y))
+        saved_cells = {
+            coordinate: read_machine_ram(
+                sock, map_cell_ram_address(place_bases, *coordinate), PLACE_SIZE
+            )
+            for coordinate in touched_cells
+        }
+        for coordinate, saved_cell in saved_cells.items():
+            cell = bytearray(saved_cell)
+            cell[2:4] = b"\0\0"
+            if coordinate != old_monster_position and coordinate != combat_target:
+                cell[0] = ord(" ")
+            write_machine_ram(
+                sock, map_cell_ram_address(place_bases, *coordinate), *cell
+            )
+        write_machine_ram(
+            sock,
+            map_cell_ram_address(place_bases, *combat_target),
+            FLOOR,
+            F_REAL,
+            initial_monster,
+            initial_monster >> 8,
+        )
+
+        player_room = read_word(
+            sock, player_position - THING_POSITION_OFFSET + THING_ROOM_OFFSET
+        )
+        write_word(sock, monster_list, initial_monster)
+        write_bytes(sock, initial_monster, 0, 0, 0, 0)
+        write_coord(
+            sock, initial_monster + THING_POSITION_OFFSET, combat_target
+        )
+        write_bytes(
+            sock,
+            initial_monster + THING_TURN_OFFSET,
+            1,
+            ord("H"),
+            ord("H"),
+            FLOOR,
+        )
+        write_word(sock, initial_monster + THING_DEST_OFFSET, player_position)
+        write_word(sock, initial_monster + THING_FLAGS_OFFSET, ISRUN)
+        write_word(sock, initial_monster + THING_STATS_LEVEL_OFFSET, -100)
+        write_word(sock, initial_monster + THING_STATS_ARMOR_OFFSET, -100)
+        write_word(sock, initial_monster + THING_STATS_HP_OFFSET, 300)
+        write_bytes(
+            sock,
+            initial_monster + THING_STATS_DAMAGE_OFFSET,
+            ord("1"),
+            ord("x"),
+            ord("1"),
+            0,
+        )
+        write_word(sock, initial_monster + THING_STATS_MAX_HP_OFFSET, 300)
+        write_word(sock, initial_monster + THING_ROOM_OFFSET, player_room)
+
+        seed_before_combat = read_dword(sock, random_seed)
+        write_dword(sock, random_seed, 3)
+        write_bytes(sock, last_comm, 0)
+        send_physical_key_until_byte(
+            sock,
+            combat_key,
+            last_comm,
+            combat_key,
+            args.timeout,
+            "deterministic hobgoblin combat",
+        )
+        combat_ocr = wait_for_ocr(
+            sock,
+            (
+                "You swing and miss the hobgoblin",
+                "The hobgoblin barely misses you",
+            ),
+            args.timeout,
+        )
+        if "--More--" in combat_ocr:
+            raise RuntimeError("two short combat messages unexpectedly used --More--")
+        if read_coord(sock, player_position) != (hero_x, hero_y):
+            raise RuntimeError("combat regression moved the hero into the monster")
+        write_dword(sock, random_seed, seed_before_combat)
+        for coordinate, saved_cell in saved_cells.items():
+            write_machine_ram(
+                sock, map_cell_ram_address(place_bases, *coordinate), *saved_cell
+            )
+        print("PASS two natural combat messages use both rows without --More--")
+
         # Detach the initial monsters in emulated RAM so waiting for the
         # wandering-monster fuse is deterministic and cannot kill the hero.
         write_bytes(sock, monster_list, 0, 0)
@@ -690,10 +867,34 @@ def main() -> int:
             sock, ord("o"), last_comm, ord("o"), args.timeout, "options command"
         )
         options_ocr = wait_for_ocr(
-            sock, ("terse: False", "flush:", "jump:"), args.timeout
+            sock, ("terse: [False]", "flush:", "jump:"), args.timeout
         )
         if any(line.strip() in ("ue", "rue") for line in options_ocr.splitlines()):
             raise RuntimeError(f"options screen used the dungeon viewport: {options_ocr!r}")
+        send_physical_key_until_ocr(
+            sock,
+            ord("t"),
+            ("terse: True", "flush: [False]"),
+            args.timeout,
+            "advance from terse option",
+        )
+        for attempt in range(3):
+            command(sock, "send-keys-ascii 200 45")
+            try:
+                wait_for_ocr(
+                    sock, ("terse: [True]", "flush: False"), 2.0
+                )
+                break
+            except RuntimeError:
+                if attempt == 2:
+                    raise
+        send_physical_key_until_ocr(
+            sock,
+            ord("f"),
+            ("terse: False", "flush: [False]"),
+            args.timeout,
+            "restore terse option",
+        )
         for attempt in range(2):
             send_break(sock)
             try:
@@ -1046,6 +1247,95 @@ def main() -> int:
         print("PASS 24-row map crosses all four bank boundaries without aliasing")
         if not traversed_maze:
             raise RuntimeError("fixed deep-level seeds did not produce a traversable maze")
+
+        # A death must cold-restart the already loaded program, not enter the
+        # Spectrum ROM.  Type a real name on the second boot to also verify
+        # that key timing replaces the deterministic empty-name seed.
+        write_word(sock, food_remaining, (-851) & 0xFFFF)
+        send_physical_key_until_ocr(
+            sock,
+            ord("."),
+            ("Killed by starvation", "Press R to restart"),
+            args.timeout,
+            "starvation death screen",
+        )
+        send_physical_key_until_byte(
+            sock, ord("r"), boot_stage, ord("H"), args.timeout, "cold restart help"
+        )
+        wait_for_ocr(sock, ("ROGUE ZX128 - KEYS",), args.timeout)
+        send_physical_key_until_byte(
+            sock, ord(" "), boot_stage, ord("N"), args.timeout, "restart name prompt"
+        )
+        wait_for_ocr(sock, ("Name your hero",), args.timeout)
+        send_physical_key_until_ocr(
+            sock, ord("a"), ("> a",), args.timeout, "first hero-name letter"
+        )
+        send_physical_key_until_ocr(
+            sock, ord("d"), ("> ad",), args.timeout, "second hero-name letter"
+        )
+        send_physical_key_until_ocr(
+            sock, ord("a"), ("> ada",), args.timeout, "third hero-name letter"
+        )
+        for attempt in range(3):
+            command(sock, "send-keys-ascii 200 13")
+            try:
+                wait_for_byte(sock, boot_stage, 0x52, 2.0, "restarted command loop")
+                break
+            except RuntimeError:
+                if attempt == 2:
+                    raise
+        wait_for_rendered_game(sock, min(args.timeout, 5.0))
+        stored_name = read_machine_ram(
+            sock, bank_symbol_ram_address(hero_name), 4
+        )
+        if stored_name != b"ada\0":
+            raise RuntimeError(f"restarted hero name is corrupt: {stored_name!r}")
+        if read_word(sock, player_pack) != initial_pack:
+            raise RuntimeError("cold restart did not reset the C heap")
+        if read_word(sock, dungeon_level) != 1 or read_word(sock, purse) != 0:
+            raise RuntimeError("cold restart retained the previous game state")
+        if read_word(sock, dungeon_number) == 1:
+            raise RuntimeError("typed-key timing did not select a new dungeon seed")
+        if read_dword(sock, random_seed) == initial_game_seed:
+            raise RuntimeError("typed-key timing reproduced the deterministic seed")
+        write_bytes(sock, last_comm, 0)
+        send_physical_key_until_byte(
+            sock, ord("v"), last_comm, ord("v"), args.timeout, "post-restart command"
+        )
+        wait_for_ocr(sock, ("Version",), args.timeout)
+        print("PASS death cold-restarts the game and timed name input selects a new seed")
+
+        for attempt in range(3):
+            command(sock, "send-keys-ascii 200 81")
+            try:
+                wait_for_ocr(sock, ("Really quit?",), 2.0)
+                break
+            except RuntimeError:
+                if attempt == 2:
+                    raise
+        send_physical_key_until_ocr(
+            sock,
+            ord("y"),
+            ("You quit with", "Press R to restart"),
+            args.timeout,
+            "quit restart prompt",
+        )
+        send_physical_key_until_byte(
+            sock, ord("r"), boot_stage, ord("H"), args.timeout, "quit cold restart"
+        )
+        send_physical_key_until_byte(
+            sock, ord(" "), boot_stage, ord("N"), args.timeout, "quit restart name"
+        )
+        for attempt in range(3):
+            command(sock, "send-keys-ascii 200 13")
+            try:
+                wait_for_byte(sock, boot_stage, 0x52, 2.0, "post-quit command loop")
+                break
+            except RuntimeError:
+                if attempt == 2:
+                    raise
+        wait_for_rendered_game(sock, min(args.timeout, 5.0))
+        print("PASS confirmed quit also cold-restarts the game")
 
         command(sock, f"save-screen {args.screenshot.resolve()}")
         validate_screenshot(args.screenshot)

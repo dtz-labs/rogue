@@ -12,6 +12,15 @@ from pathlib import Path
 BANK_WINDOW_ORIGIN = 0xC000
 BANK_SIZE = 0x4000
 FORBIDDEN_BANKS = {2, 5}
+RESTART_DATA_SIZES = {
+    "fixed": 0x0BA3,
+    0: 0x0108,
+    1: 0x01AD,
+    3: 0x026E,
+    4: 0x00CD,
+    6: 0x00A2,
+    7: 0x00A0,
+}
 FORBIDDEN_PAGEABLE_SCRATCH_PREFIXES = (
     "_do_zap_bolt_",
     "_fire_bolt_pos_",
@@ -133,6 +142,46 @@ def main() -> int:
     main_size = args.main_bin.stat().st_size
     if main_size == 0:
         errors.append(f"main binary is empty: {args.main_bin}")
+    else:
+        # zx_restart_game jumps to origin + 3: immediately after the CRT's
+        # initial CALL that loads the pageable images from tape.
+        crt_prefix = args.main_bin.read_bytes()[:7]
+        if crt_prefix != bytes.fromhex("cd4960fd213a5c"):
+            errors.append(
+                "CRT no longer starts with CALL 0x6049 followed by "
+                "LD IY,0x5c3a; "
+                "the restart entry at CRT_ORG_CODE + 3 must be reviewed"
+            )
+
+    fixed_data_head = symbols.get("__data_clib_head")
+    fixed_data_tail = symbols.get("__data_compiler_tail")
+    if fixed_data_head is None or fixed_data_tail is None:
+        errors.append("restart fixed-DATA boundary symbols are missing")
+    elif fixed_data_tail - fixed_data_head != RESTART_DATA_SIZES["fixed"]:
+        errors.append(
+            "restart fixed-DATA snapshot size is stale: "
+            f"map={fixed_data_tail - fixed_data_head}, "
+            f"expected={RESTART_DATA_SIZES['fixed']}"
+        )
+    elif (
+        symbols.get("__DATA_head") != fixed_data_head
+        or symbols.get("__DATA_END_tail") != fixed_data_tail
+    ):
+        errors.append(
+            "restart fixed-DATA snapshot no longer covers the complete "
+            "fixed DATA image"
+        )
+    for bank, expected in RESTART_DATA_SIZES.items():
+        if bank == "fixed":
+            continue
+        actual = symbols.get(f"__DATA_{bank}_size")
+        if actual is None:
+            errors.append(f"restart DATA_{bank} size symbol is missing")
+        elif actual != expected:
+            errors.append(
+                f"restart DATA_{bank} snapshot size is stale: "
+                f"map={actual}, expected={expected}"
+            )
 
     unassigned = args.main_bin.with_name(
         f"{args.main_bin.stem}_UNASSIGNED.bin"
@@ -147,6 +196,10 @@ def main() -> int:
         errors.append("CRT_ORG_CODE is missing from the map")
         binary_tail = None
     else:
+        if origin != 0x6000:
+            errors.append(
+                f"restart entry requires CRT_ORG_CODE=0x6000, got 0x{origin:04X}"
+            )
         binary_tail = origin + main_size
         if fixed_limit <= origin:
             errors.append(

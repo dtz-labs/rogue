@@ -27,6 +27,51 @@ char *inv_t_name[] = {
     "Slow",
     "Clear"
 };
+
+extern volatile unsigned char zx_boot_stage;
+
+bool
+zx_startup_name(void)
+{
+    char name[21];
+    unsigned char used;
+    int ch;
+
+    clear();
+    mvaddstr(7, 4, "Name your hero");
+    mvaddstr(9, 2, "ENTER keeps the name Rogue");
+    mvaddstr(11, 4, "> ");
+    used = 0;
+    zx_boot_stage = 'N';
+    refresh();
+    for (;;) {
+        ch = readchar();
+        if (ch == '\n' || ch == '\r' || ch == ESCAPE)
+            break;
+        if (ch == erasechar() || ch == 8) {
+            if (used != 0) {
+                --used;
+                mvaddch(11, 6 + used, ' ');
+                move(11, 6 + used);
+                refresh();
+            }
+            continue;
+        }
+        if (!isprint(ch) || used >= sizeof name - 1)
+            continue;
+        name[used++] = (char)ch;
+        mvaddch(11, 6 + used - 1, ch);
+        refresh();
+    }
+    if (used != 0 && ch != ESCAPE) {
+        name[used] = '\0';
+        strcpy(whoami, name);
+        clear();
+        return TRUE;
+    }
+    clear();
+    return FALSE;
+}
 #endif
 
 #define	EQSTR(a, b, c)	(strncmp(a, b, c) == 0)
@@ -216,11 +261,19 @@ get_bool(void *vp, WINDOW *win)
 {
     bool *bp = (bool *) vp;
     int oy, ox;
+    int retval;
     bool op_bad;
 
+    retval = NORM;
     op_bad = TRUE;
     getyx(win, oy, ox);
+#ifdef ZX128
+    waddch(win, '[');
+#endif
     waddstr(win, *bp ? "True" : "False");
+#ifdef ZX128
+    waddch(win, ']');
+#endif
     while (op_bad)	
     {
 	wmove(win, oy, ox);
@@ -242,9 +295,13 @@ get_bool(void *vp, WINDOW *win)
 		op_bad = FALSE;
 		break;
 	    case ESCAPE:
-		return QUIT;
+		retval = QUIT;
+		op_bad = FALSE;
+		break;
 	    case '-':
-		return MINUS;
+		retval = MINUS;
+		op_bad = FALSE;
+		break;
 	    default:
 		wmove(win, oy, ox + 10);
 		waddstr(win, "(T or F)");
@@ -253,8 +310,9 @@ get_bool(void *vp, WINDOW *win)
     wmove(win, oy, ox);
     wclrtoeol(win);
     waddstr(win, *bp ? "True" : "False");
-    waddch(win, '\n');
-    return NORM;
+    if (retval == NORM)
+	waddch(win, '\n');
+    return retval;
 }
 
 /*
@@ -275,7 +333,7 @@ get_sf(void *vp, WINDOW *win)
     was_sf = see_floor;
 #endif
     retval = get_bool(bp, win);
-    if (retval == QUIT) return(QUIT);
+    if (retval != NORM) return(retval);
 #ifndef ZX128
     if (was_sf != see_floor)
     {

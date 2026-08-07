@@ -1,6 +1,38 @@
 #include <curses.h>
 #include "rogue.h"
 
+extern volatile unsigned char zx_boot_stage;
+
+void
+zx_startup_help(void)
+{
+    int ch;
+
+    clear();
+    mvaddstr(0, 7, "ROGUE ZX128 - KEYS");
+    mvaddstr(2, 1, "h j k l / y u b n   move");
+    mvaddstr(3, 1, "SHIFT + direction   run");
+    mvaddstr(4, 1, "f/F + direction     fight");
+    mvaddstr(6, 1, "i inventory      , pick up");
+    mvaddstr(7, 1, "q potion         r scroll");
+    mvaddstr(8, 1, "e food           d drop");
+    mvaddstr(9, 1, "w wield          W wear");
+    mvaddstr(10, 1, "T take off       P/R rings");
+    mvaddstr(11, 1, "t throw          z zap");
+    mvaddstr(12, 1, "s search         ^ trap");
+    mvaddstr(13, 1, ">/< stairs        . rest");
+    mvaddstr(15, 1, "? command help   o options");
+    mvaddstr(16, 1, "BREAK cancels a command");
+    mvaddstr(19, 5, "SPACE - enter your name");
+    zx_boot_stage = 'H';
+    refresh();
+    do {
+        ch = readchar();
+    } while (ch != ' ' && ch != '\n' && ch != '\r' && ch != ESCAPE);
+    zx_wait_for_key_release();
+    clear();
+}
+
 /* Kept with command.c in bank 0 so its strings are valid while displayed. */
 struct h_list helpstr[] = {
     {'?',       "\tprints help",                          TRUE},
