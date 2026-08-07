@@ -46,6 +46,12 @@ jobs:
             --stack-reserve 3072 \
             --heap-reserve 3072
 
+      - name: Check cross-bank calls page correctly
+        run: |
+          python3 zx128/tools/check_bank_calls.py \
+            --map zx128/build/rogue-zx128.map \
+            --root .
+
       - name: Upload TAP and linker outputs
         uses: actions/upload-artifact@v7
         with:

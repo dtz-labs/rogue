@@ -138,6 +138,7 @@ check-banked-objects: build
 layout: check-banked-objects
 	python3 tools/check_layout.py --map $(MAP) --main-bin $(MAIN_BIN) \
 		--stack-reserve 3072 --heap-reserve 3072
+	python3 tools/check_bank_calls.py --map $(MAP) --root $(ROOT)
 
 check-zesarux:
 	@command -v "$(ZESARUX)" >/dev/null 2>&1 || { \
