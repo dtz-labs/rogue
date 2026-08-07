@@ -513,6 +513,7 @@ def main() -> int:
     passages = required_symbol(symbols, "passages")
     dungeon_level = required_symbol(symbols, "level")
     random_seed = required_symbol(symbols, "seed")
+    wanderer_between = bank_symbol_ram_address(required_symbol(symbols, "between"))
     dungeon_number = required_symbol(symbols, "dnum")
     food_remaining = required_symbol(symbols, "food_left")
     rooms = required_symbol(symbols, "rooms")
@@ -634,9 +635,9 @@ def main() -> int:
             )
 
         # Exercise the real two-message combat path before detaching the level
-        # monsters.  A forced player miss is exactly 32 characters and the
-        # runner's forced counter-miss is 31, so the second message only fits
-        # after the renderer's full second line is admitted by endmsg().
+        # monsters.  The runner's forced counter-miss is 31 characters, so
+        # the second message only fits after the renderer's full second line
+        # is admitted by endmsg().
         hero_x, hero_y = read_coord(sock, player_position)
         if hero_x + 1 < 80:
             combat_target = (hero_x + 1, hero_y)
@@ -712,7 +713,7 @@ def main() -> int:
         write_word(sock, initial_monster + THING_ROOM_OFFSET, player_room)
 
         seed_before_combat = read_dword(sock, random_seed)
-        write_dword(sock, random_seed, 3)
+        write_dword(sock, random_seed, 8)
         write_bytes(sock, last_comm, 0)
         send_physical_key_until_byte(
             sock,
@@ -725,7 +726,7 @@ def main() -> int:
         combat_ocr = wait_for_ocr(
             sock,
             (
-                "You swing and miss the hobgoblin",
+                "You miss the hobgoblin",
                 "The hobgoblin barely misses you",
             ),
             args.timeout,
@@ -1091,19 +1092,23 @@ def main() -> int:
         wanderer_turns = 0
         while wanderer_turns < 96:
             before = read_byte(sock, turn_count)
-            # One ZRCP command inserts release events between identical keys,
-            # avoiding the Spectrum ROM's repeated-key suppression.
-            command(sock, "send-keys-ascii 80 46 46 46 46")
-            time.sleep(0.12)
+            # Once the swander fuse starts rollwand(), make its first eligible
+            # d6 roll deterministic instead of accepting a one-in-six CI flake.
+            write_machine_ram(sock, wanderer_between, 3, 0)
+            # BEFORE itself consumes one RNG value; seed 5 makes rollwand's
+            # following d6 value equal four as soon as its daemon is active.
+            write_dword(sock, random_seed, 5)
+            command(sock, "send-keys-ascii 80 46")
+            time.sleep(0.08)
             after = read_byte(sock, turn_count)
             if after == before:
                 after = wait_for_byte_change(
-                    sock, turn_count, before, args.timeout, "wanderer wait batch"
+                    sock, turn_count, before, args.timeout, "wanderer wait"
                 )
             advanced = (after - before) & 0xFF
-            if advanced > 4:
+            if advanced > 1:
                 raise RuntimeError(
-                    f"wanderer wait batch advanced {advanced} turns, expected at most 4"
+                    f"wanderer wait advanced {advanced} turns, expected at most one"
                 )
             wanderer_turns += advanced
             wandering_monster = read_word(sock, monster_list)
