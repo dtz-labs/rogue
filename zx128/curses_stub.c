@@ -29,6 +29,7 @@ void zx_screen_fill(unsigned int index, unsigned int count,
                     unsigned char value);
 void zx_render_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
 void zx_render_message_line(void) ZX_BANKED_6;
+void zx_render_status_row(unsigned char row) ZX_BANKED_6;
 
 WINDOW *stdscr = &screen_window;
 WINDOW *curscr = &screen_window;
@@ -78,6 +79,8 @@ static void render_physical_screen(void)
         ++zx_rendered_rows;
         if (row == 1 && second_line)
             zx_render_message_line();
+        else if (row == ZX_SCREEN_ROWS - 1U)
+            zx_render_status_row(row);
         else
             zx_render_row(row, row_first);
     }

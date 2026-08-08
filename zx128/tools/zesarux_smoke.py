@@ -14,6 +14,7 @@ from pathlib import Path
 
 PROMPT = b"command> "
 SYMBOL_RE = re.compile(r"^(\S+)\s*=\s*\$([0-9A-Fa-f]+)\b", re.MULTILINE)
+STATUS_CHAR_ROW = 23
 THING_POSITION_OFFSET = 4
 THING_TURN_OFFSET = 8
 THING_DEST_OFFSET = 12
@@ -463,16 +464,44 @@ def leave_name_prompt(
     wait_for_byte(sock, boot_stage, 0x52, timeout, label)
 
 
+def status_row_ink(sock: socket.socket) -> int:
+    """Count set pixels on the status row, straight out of the display file.
+
+    The status row is drawn with the 4x8 font so that 64 characters fit, and
+    ZEsarUX's OCR only recognises the 8x8 ROM glyphs -- it reads that row as
+    blank. Checking the pixels still catches the failure that matters, which is
+    the row not being drawn at all.
+    """
+    total = 0
+    for scanline in range(8):
+        y = (STATUS_CHAR_ROW << 3) + scanline
+        address = (0x4000 + ((y & 0xC0) << 5) + ((y & 0x07) << 8)
+                   + ((y & 0x38) << 2))
+        total += sum(bin(b).count("1") for b in read_bytes(sock, address, 32))
+    return total
+
+
+def wait_for_status_row(sock: socket.socket, timeout: float, label: str) -> None:
+    deadline = time.monotonic() + timeout
+    ink = 0
+    while time.monotonic() < deadline:
+        ink = status_row_ink(sock)
+        if ink:
+            return
+        time.sleep(0.1)
+    raise RuntimeError(f"{label}: status row drew no pixels (ink={ink})")
+
+
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
     deadline = time.monotonic() + timeout
     last = ""
     while time.monotonic() < deadline:
         last = command(sock, "get-ocr")
-        if "Level:" in last and "@" in last:
+        if "@" in last and ("|" in last or "-" in last):
             return last
         time.sleep(0.1)
-    raise RuntimeError(f"Rogue map/status not visible in OCR: {last!r}")
+    raise RuntimeError(f"Rogue map not visible in OCR: {last!r}")
 
 
 def wait_for_ocr(sock: socket.socket, needles: tuple[str, ...], timeout: float) -> str:
@@ -919,7 +948,7 @@ def main() -> int:
         for attempt in range(2):
             send_physical_key(sock, ord(" "))
             try:
-                wait_for_ocr(sock, ("Level:",), 2.0)
+                wait_for_status_row(sock, 2.0, "status row after overlay")
                 break
             except RuntimeError:
                 if attempt:
@@ -954,7 +983,7 @@ def main() -> int:
         for attempt in range(2):
             send_physical_key(sock, ord(" "))
             try:
-                wait_for_ocr(sock, ("Level:",), 2.0)
+                wait_for_status_row(sock, 2.0, "status row after overlay")
                 break
             except RuntimeError:
                 if attempt:

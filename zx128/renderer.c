@@ -1,9 +1,11 @@
 #include "curses.h"
 #include "zx_banking.h"
+#include "zx_status_font.h"
 #include <string.h>
 
 #define ZX_SCREEN_COLS 80
 #define ZX_VISIBLE_COLS 32
+#define ZX_STATUS_COLS (2 * ZX_VISIBLE_COLS)
 
 void zx_screen_copy(unsigned int index, unsigned char *target,
                     unsigned char count);
@@ -28,6 +30,71 @@ static void draw_physical_cell(unsigned char row, unsigned char col,
         *(unsigned char *)address = glyph[scanline];
     }
     ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
+}
+
+static const unsigned char *status_glyph(unsigned char ch)
+{
+    if (ch >= 'a' && ch <= 'z')
+        ch = (unsigned char)(ch - ('a' - 'A'));
+    if (ch < ZX_STATUS_FONT_FIRST || ch > ZX_STATUS_FONT_LAST)
+        ch = ' ';
+    return zx_status_font
+        + ((unsigned int)(ch - ZX_STATUS_FONT_FIRST) * ZX_STATUS_FONT_STRIDE);
+}
+
+/* One nibble per scanline, two scanlines to a byte, even scanline on top. */
+static unsigned char status_scanline(const unsigned char *glyph,
+                                     unsigned char scanline)
+{
+    unsigned char packed = glyph[scanline >> 1];
+
+    return (scanline & 1U) ? (unsigned char)(packed & 0x0fU)
+                           : (unsigned char)(packed >> 4);
+}
+
+/*
+ * The status line is the one row where 32 characters are not enough: the
+ * 80-column original ended mid-Hp and hid Str, Arm and Exp completely. Draw it
+ * with the 4x8 font instead, fitting 64 characters in the same 32 cells, two
+ * glyphs to a cell.
+ *
+ * The options and help screens write short prompts to this same row, and they
+ * read better in the ROM font, so switch on the text rather than on who wrote
+ * it: anything that still fits in 32 columns is drawn the normal way.
+ */
+void zx_render_status_row(unsigned char row)
+{
+    unsigned char text[ZX_STATUS_COLS];
+    unsigned char col;
+
+    zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS, text, ZX_STATUS_COLS);
+    for (col = ZX_VISIBLE_COLS; col < ZX_STATUS_COLS; ++col)
+        if (text[col] != ' ')
+            break;
+    if (col == ZX_STATUS_COLS) {
+        for (col = 0; col < ZX_VISIBLE_COLS; ++col)
+            draw_physical_cell(row, col, text[col]);
+        return;
+    }
+
+    for (col = 0; col < ZX_VISIBLE_COLS; ++col) {
+        const unsigned char *left = status_glyph(text[col << 1]);
+        const unsigned char *right = status_glyph(text[(col << 1) + 1]);
+        unsigned char scanline;
+
+        for (scanline = 0; scanline < 8U; ++scanline) {
+            unsigned int pixel_y = ((unsigned int)row << 3) + scanline;
+            unsigned int address = 0x4000U
+                + ((pixel_y & 0xc0U) << 5)
+                + ((pixel_y & 0x07U) << 8)
+                + ((pixel_y & 0x38U) << 2)
+                + col;
+            *(unsigned char *)address =
+                (unsigned char)((status_scanline(left, scanline) << 4)
+                                | status_scanline(right, scanline));
+        }
+        ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
+    }
 }
 
 void zx_render_row(unsigned char row, unsigned char first_col)

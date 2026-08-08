@@ -275,6 +275,32 @@ status()
     s_exp = pstats.s_exp; 
     s_hungry = hungry_state;
 
+#ifdef ZX128
+    /*
+     * The status row is drawn with the 4x8 font, so it holds 64 characters
+     * rather than the 32 the rest of the screen gets. That is still short of
+     * the 80 this line was written for, so drop the column padding and use
+     * Hp: n/n. Hunger comes before Exp because it is the field worth losing
+     * last if a long game pushes the line past the edge.
+     */
+#define ZX_STATFMT "Level:%d Gold:%d Hp:%d/%d Str:%d(%d) Arm:%d %s%sExp:%d/%ld"
+#define ZX_STATARGS level, purse, pstats.s_hpt, max_hp, pstats.s_str, \
+	max_stats.s_str, 10 - s_arm, state_name[hungry_state], \
+	hungry_state ? " " : "", pstats.s_lvl, (long)pstats.s_exp
+    if (stat_msg)
+    {
+	move(0, 0);
+	msg(ZX_STATFMT, ZX_STATARGS);
+    }
+    else
+    {
+	move(STATLINE, 0);
+	printw(ZX_STATFMT, ZX_STATARGS);
+    }
+#undef ZX_STATFMT
+#undef ZX_STATARGS
+    (void)hpwidth;
+#else
     if (stat_msg)
     {
 	move(0, 0);
@@ -286,12 +312,13 @@ status()
     else
     {
 	move(STATLINE, 0);
-                
+
 	printw("Level: %d  Gold: %-5d  Hp: %*d(%*d)  Str: %2d(%d)  Arm: %-2d  Exp: %d/%ld  %s",
 	    level, purse, hpwidth, pstats.s_hpt, hpwidth, max_hp, pstats.s_str,
 	    max_stats.s_str, 10 - s_arm, pstats.s_lvl, (long)pstats.s_exp,
 	    state_name[hungry_state]);
     }
+#endif
 
     clrtoeol();
     move(oy, ox);
