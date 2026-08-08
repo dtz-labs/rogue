@@ -52,6 +52,9 @@ static void draw_physical_cell(unsigned char row, unsigned char col,
  *        meet the wall it sits in from both sides -- the stock glyph put its
  *        bar on columns 1..3 and its stem on scanlines 2..6, so a door left a
  *        pixel of daylight on one side of the wall and nothing on the other.
+ *        The bar is two scanlines deep: one is thinner than the wall it
+ *        crosses, and in a vertical wall the crossing wants to read as a small
+ *        square rather than a tick.
  *   '%'  rebuilt so the staircase does not disappear into the floor.
  *
  * '@' is deliberately NOT redrawn: the stock glyph is the densest thing in the
@@ -69,7 +72,7 @@ static const unsigned char zx_map_glyph_data[ZX_MAP_GLYPHS][4] = {
     { 0x80, 0x20, 0x80, 0x20 },     /* # */
     { 0x44, 0x44, 0x44, 0x44 },     /* | */
     { 0x00, 0x00, 0xf0, 0x00 },     /* - */
-    { 0x44, 0x44, 0xf4, 0x44 },     /* + */
+    { 0x44, 0x4f, 0xf4, 0x44 },     /* + */
     { 0x88, 0x24, 0x48, 0x22 },     /* % */
     { 0xc4, 0x44, 0x44, 0xc0 },     /* ] */
     { 0x4a, 0x00, 0x00, 0x00 }      /* ^ */
