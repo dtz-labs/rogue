@@ -53,6 +53,7 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-redirect:fputc_cons=zx_fputc_cons_null \
 	-pragma-define:CLIB_OPT_PRINTF=0x40001601 \
 	-pragma-define:CLIB_OPT_PRINTF_2=0 \
+	-pragma-define:CLIB_EXIT_STACK_SIZE=0 \
 	-lndos -m -create-app
 
 FIXED_NAMES := extern io
