@@ -33,28 +33,40 @@ static void draw_physical_cell(unsigned char row, unsigned char col,
 }
 
 /*
- * The status font stops at 'Z', which covers monsters and every item glyph but
- * three, and its ']', '^' and '|' simply do not exist. Those three plus four
- * redrawn ones live here, four bytes each in the same packing.
+ * The status font stops at 'Z', so ']', '^' and '|' do not exist in it at all.
+ * Those three, plus four glyphs the map wants drawn differently from the way
+ * text wants them, live here -- four bytes each, in the status packing.
  *
- * The redraws are not cosmetic. At three pixels the stock '@' is the same
- * weight as the floor dots around it, and the player has to be the one thing
- * you find instantly; it is a slab with a notch now. The stock '#' is as heavy
- * as a wall, and corridors are everywhere, so it drops to a dotted texture.
+ * The redraws answer things that only show up once a whole dungeon is on
+ * screen:
+ *
+ *   '.'  was a 2x2 block, which made bare floor heavier than the items and
+ *        monsters standing on it. One pixel is enough to read as floor.
+ *   '#'  is drawn on columns 0 and 2 of every even scanline. Both axes then
+ *        repeat with period 2, so the dots stay evenly spaced across cell
+ *        edges; on odd scanlines the vertical gap between stacked corridor
+ *        cells came out at 3 where the gap inside a cell was 1.
+ *   '+'  had its crossbar on columns 1..3, so every door bled into the glyph
+ *        beside it. Centred on 0..2 it stays inside its own slot.
+ *   '%'  rebuilt so the staircase does not disappear into the floor.
+ *
+ * '@' is deliberately NOT redrawn: the stock glyph is the densest thing in the
+ * font, and against single-pixel floor it already reads as the player.
  */
-#define ZX_MAP_GLYPHS 6
+#define ZX_MAP_GLYPHS 7
 
 static const unsigned char zx_map_glyph_char[ZX_MAP_GLYPHS] = {
-    '|', ']', '^', '@', '%', '#'
+    '.', '#', '|', '+', '%', ']', '^'
 };
 
 static const unsigned char zx_map_glyph_data[ZX_MAP_GLYPHS][4] = {
+    { 0x00, 0x00, 0x04, 0x00 },     /* . */
+    { 0xa0, 0xa0, 0xa0, 0xa0 },     /* # */
     { 0x44, 0x44, 0x44, 0x44 },     /* | */
-    { 0xc4, 0x44, 0x44, 0xc0 },     /* ] */
-    { 0x4a, 0x00, 0x00, 0x00 },     /* ^ */
-    { 0x0e, 0xae, 0xee, 0x00 },     /* @ */
+    { 0x00, 0x44, 0xe4, 0x40 },     /* + */
     { 0x88, 0x24, 0x48, 0x22 },     /* % */
-    { 0x0a, 0x0a, 0x0a, 0x00 }      /* # */
+    { 0xc4, 0x44, 0x44, 0xc0 },     /* ] */
+    { 0x4a, 0x00, 0x00, 0x00 }      /* ^ */
 };
 
 static const unsigned char *status_glyph(unsigned char ch)
