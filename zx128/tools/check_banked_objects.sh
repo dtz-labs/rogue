@@ -77,7 +77,7 @@ check_bss "$build_dir/bank3/bank_storage.o" BSS_3 3936
 check_bss "$build_dir/bank4/bank_storage.o" BSS_4 1440
 check_bss "$build_dir/bank4/restart_storage.o" BSS_4 1842
 check_bss "$build_dir/bank7/screen_snapshot.o" BSS_7 1920
-check_bss "$build_dir/bank7/restart_snapshot.o" BSS_7 2965
+check_bss "$build_dir/bank7/restart_snapshot.o" BSS_7 2859
 
 if [ "$errors" -ne 0 ]; then
     exit 1
