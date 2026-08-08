@@ -13,7 +13,7 @@ BANK_WINDOW_ORIGIN = 0xC000
 BANK_SIZE = 0x4000
 FORBIDDEN_BANKS = {2, 5}
 RESTART_DATA_SIZES = {
-    "fixed": 0x0BA3,
+    "fixed": 0x0B95,
     0: 0x0108,
     1: 0x01AD,
     3: 0x026E,
