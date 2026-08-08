@@ -32,6 +32,31 @@ static void draw_physical_cell(unsigned char row, unsigned char col,
     ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
 }
 
+/*
+ * The status font stops at 'Z', which covers monsters and every item glyph but
+ * three, and its ']', '^' and '|' simply do not exist. Those three plus four
+ * redrawn ones live here, four bytes each in the same packing.
+ *
+ * The redraws are not cosmetic. At three pixels the stock '@' is the same
+ * weight as the floor dots around it, and the player has to be the one thing
+ * you find instantly; it is a slab with a notch now. The stock '#' is as heavy
+ * as a wall, and corridors are everywhere, so it drops to a dotted texture.
+ */
+#define ZX_MAP_GLYPHS 6
+
+static const unsigned char zx_map_glyph_char[ZX_MAP_GLYPHS] = {
+    '|', ']', '^', '@', '%', '#'
+};
+
+static const unsigned char zx_map_glyph_data[ZX_MAP_GLYPHS][4] = {
+    { 0x44, 0x44, 0x44, 0x44 },     /* | */
+    { 0xc4, 0x44, 0x44, 0xc0 },     /* ] */
+    { 0x4a, 0x00, 0x00, 0x00 },     /* ^ */
+    { 0x0e, 0xae, 0xee, 0x00 },     /* @ */
+    { 0x88, 0x24, 0x48, 0x22 },     /* % */
+    { 0x0a, 0x0a, 0x0a, 0x00 }      /* # */
+};
+
 static const unsigned char *status_glyph(unsigned char ch)
 {
     if (ch >= 'a' && ch <= 'z')
@@ -106,6 +131,50 @@ void zx_render_row(unsigned char row, unsigned char first_col)
                    physical_row, ZX_VISIBLE_COLS);
     for (col = 0; col < ZX_VISIBLE_COLS; ++col)
         draw_physical_cell(row, col, physical_row[col]);
+}
+
+static const unsigned char *map_glyph(unsigned char ch)
+{
+    unsigned char i;
+
+    for (i = 0; i < ZX_MAP_GLYPHS; ++i)
+        if (zx_map_glyph_char[i] == ch)
+            return zx_map_glyph_data[i];
+    return status_glyph(ch);
+}
+
+/*
+ * A map row in the 4x8 font: 64 dungeon columns in the same 32 cells, two
+ * glyphs to a cell, exactly as the status row already does it. The message row
+ * deliberately does not come through here -- it keeps the ROM font, because
+ * the small font has no lower case and prose in capitals reads badly.
+ */
+void zx_render_map_row(unsigned char row, unsigned char first_col)
+{
+    unsigned char logical_row[ZX_MAP_COLS];
+    unsigned char col;
+
+    zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS + first_col,
+                   logical_row, ZX_MAP_COLS);
+
+    for (col = 0; col < ZX_VISIBLE_COLS; ++col) {
+        const unsigned char *left = map_glyph(logical_row[col << 1]);
+        const unsigned char *right = map_glyph(logical_row[(col << 1) + 1]);
+        unsigned char scanline;
+
+        for (scanline = 0; scanline < 8U; ++scanline) {
+            unsigned int pixel_y = ((unsigned int)row << 3) + scanline;
+            unsigned int address = 0x4000U
+                + ((pixel_y & 0xc0U) << 5)
+                + ((pixel_y & 0x07U) << 8)
+                + ((pixel_y & 0x38U) << 2)
+                + col;
+            *(unsigned char *)address =
+                (unsigned char)((status_scanline(left, scanline) << 4)
+                                | status_scanline(right, scanline));
+        }
+        ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
+    }
 }
 
 void zx_render_message_line(void)

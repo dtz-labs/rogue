@@ -23,7 +23,17 @@ typedef struct zx_window {
 #define OK 0
 #define A_CHARTEXT 0xff
 
+/*
+ * Physical character cells across the Spectrum screen. Overlays and the
+ * message row work in these, because they use the 8x8 ROM font.
+ */
 #define ZX_VIEWPORT_COLS 32
+/*
+ * Dungeon columns shown at once. The map is drawn in the 4x8 font, two glyphs
+ * to a cell, so it sees twice as much of the 80-column level as the cells
+ * suggest. Panning still exists; it just has 16 columns of travel, not 48.
+ */
+#define ZX_MAP_COLS 64
 #define ZX_VIEWPORT_NONE 0xffU
 
 #define KEY_LEFT 256

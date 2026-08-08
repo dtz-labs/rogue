@@ -1,3 +1,6 @@
 /zx128/build/
 __pycache__/
 /.hallmark/
+
+# Claude Code agent worktrees are transient and must never be committed.
+.claude/worktrees/

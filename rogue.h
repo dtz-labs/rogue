@@ -744,7 +744,11 @@ void zx_wait_for_key_release(void);
 void zx_wait_for_restart(void) ZX_BANKED_3;
 void zx_startup_help(void) ZX_BANKED_0;
 bool zx_startup_name(void) ZX_BANKED_1;
-void zx_update_viewport(void) ZX_BANKED_6;
+/*
+ * Resident, not banked: the 4x8 map renderer needed the room in bank 6, and a
+ * fixed callee is cheaper to reach than a banked one anyway.
+ */
+void zx_update_viewport(void);
 /* Longest entry of rainbow[] is "aquamarine". */
 #define ZX_COLOR_NAME_MAX 11
 extern char zx_color_name[ZX_COLOR_NAME_MAX];

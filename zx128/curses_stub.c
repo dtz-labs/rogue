@@ -28,6 +28,7 @@ unsigned char zx_screen_get(unsigned int index);
 void zx_screen_fill(unsigned int index, unsigned int count,
                     unsigned char value);
 void zx_render_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
+void zx_render_map_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
 void zx_render_message_line(void) ZX_BANKED_6;
 void zx_render_status_row(unsigned char row) ZX_BANKED_6;
 
@@ -81,8 +82,10 @@ static void render_physical_screen(void)
             zx_render_message_line();
         else if (row == ZX_SCREEN_ROWS - 1U)
             zx_render_status_row(row);
+        else if (row == 0)
+            zx_render_row(row, row_first);   /* messages keep the ROM font */
         else
-            zx_render_row(row, row_first);
+            zx_render_map_row(row, row_first);
     }
 }
 
