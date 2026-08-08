@@ -604,6 +604,10 @@ help()
     if (numprint > LINES - 1)
 	numprint = LINES - 1;
 
+#ifdef ZX128
+    /* hw shares stdscr's cells here: keep the map to put back. */
+    zx_screen_snapshot_save();
+#endif
     wclear(hw);
     cnt = 0;
     for (strp = helpstr; strp->h_desc != NULL; strp++)
@@ -620,6 +624,9 @@ help()
     waddstr(hw, "--Press space to continue--");
     wrefresh(hw);
     wait_for(' ');
+#ifdef ZX128
+    zx_screen_snapshot_restore();
+#endif
     clearok(stdscr, TRUE);
 /*
     refresh();

@@ -362,6 +362,12 @@ show_win(char *message)
     wrefresh(win);
     wait_for(' ');
 #ifdef ZX128
+    /*
+     * hw and stdscr are the same cell buffer on this target, so the caller's
+     * wclear(hw) wiped the dungeon before drawing its overlay.  Put the
+     * snapshot the caller took back before clearok() repaints from here.
+     */
+    zx_screen_snapshot_restore();
     wmove(win, 0, 0);
     wclrtoeol(win);
     mpos = 0;

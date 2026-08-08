@@ -239,6 +239,10 @@ def:
 	     * Potion of gold detection
 	     */
 	    ch = FALSE;
+#ifdef ZX128
+	    /* hw shares stdscr's cells here: keep the map to put back. */
+	    zx_screen_snapshot_save();
+#endif
 	    wclear(hw);
 	    for (obj = lvl_obj; obj != NULL; obj = next(obj))
 		if (obj->o_type == FOOD)
@@ -253,7 +257,13 @@ def:
 		show_win("Your nose tingles and you smell food.--More--");
 	    }
 	    else
+	    {
+#ifdef ZX128
+		/* Nothing to show, so nothing restores the cleared map. */
+		zx_screen_snapshot_restore();
+#endif
 		msg("your nose tingles");
+	    }
 	when S_TELEP:
 	    /*
 	     * Scroll of teleportation:

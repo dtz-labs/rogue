@@ -122,6 +122,10 @@ quaff()
 	    show = FALSE;
 	    if (lvl_obj != NULL)
 	    {
+#ifdef ZX128
+		/* hw shares stdscr's cells here: keep the map to put back. */
+		zx_screen_snapshot_save();
+#endif
 		wclear(hw);
 		for (tp = lvl_obj; tp != NULL; tp = next(tp))
 		{
@@ -152,8 +156,15 @@ quaff()
 		show_win("You sense the presence of magic on this level.--More--");
 	    }
 	    else
+	    {
+#ifdef ZX128
+		/* Nothing to show, so nothing restores the cleared map. */
+		if (lvl_obj != NULL)
+		    zx_screen_snapshot_restore();
+#endif
 		msg("you have a %s feeling for a moment, then it passes",
 		    choose_str("normal", "strange"));
+	    }
 	when P_LSD:
 	    if (!trip)
 	    {
