@@ -49,6 +49,8 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-define:REGISTER_SP=0xbfff \
 	-pragma-define:CRT_STACK_SIZE=3072 \
 	-pragma-export:CLIB_BANKING_STACK_SIZE=256 \
+	-pragma-define:CRT_ENABLE_STDIO=0 \
+	-pragma-redirect:fputc_cons=zx_fputc_cons_null \
 	-lndos -m -create-app
 
 # vers.c must stay resident. Its only live symbol here is `release`, a pointer
@@ -56,6 +58,7 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 # bank, the pointer survives the switch but the string it names does not.
 FIXED_NAMES := extern io vers
 FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data
+FIXED_ASM_NAMES := fputc_cons_null
 BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
 BANK3_NAMES := init misc monsters wizard rip_zx
@@ -64,7 +67,8 @@ BANK6_NAMES := chase fight daemons renderer viewport message
 BANK7_NAMES := new_level rooms passages daemon list screen_snapshot restart_snapshot
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
-	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES)))
+	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES))) \
+	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_ASM_NAMES)))
 BANK0_OBJS := $(addprefix $(BUILD)/bank0/,$(addsuffix .o,$(BANK0_NAMES)))
 BANK1_OBJS := $(addprefix $(BUILD)/bank1/,$(addsuffix .o,$(BANK1_NAMES)))
 BANK3_OBJS := $(addprefix $(BUILD)/bank3/,$(addsuffix .o,$(BANK3_NAMES)))
@@ -109,6 +113,10 @@ $(BUILD)/fixed/%.o: $(ROOT)/%.c
 	$(ZCC_ENV) $(ZCC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/fixed/%.o: %.c
+	@mkdir -p $(@D)
+	$(ZCC_ENV) $(ZCC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/fixed/%.o: %.asm
 	@mkdir -p $(@D)
 	$(ZCC_ENV) $(ZCC) $(CFLAGS) -c $< -o $@
 
