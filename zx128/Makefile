@@ -51,11 +51,14 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-export:CLIB_BANKING_STACK_SIZE=256 \
 	-lndos -m -create-app
 
-FIXED_NAMES := extern io
+# vers.c must stay resident. Its only live symbol here is `release`, a pointer
+# that command.c dereferences from bank 0 for the 'v' command; built into a
+# bank, the pointer survives the switch but the string it names does not.
+FIXED_NAMES := extern io vers
 FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data
 BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
-BANK3_NAMES := init misc monsters wizard vers rip_zx
+BANK3_NAMES := init misc monsters wizard rip_zx
 BANK4_NAMES := potions scrolls sticks weapons restart_storage
 BANK6_NAMES := chase fight daemons renderer viewport message
 BANK7_NAMES := new_level rooms passages daemon list screen_snapshot restart_snapshot
@@ -129,11 +132,6 @@ $(eval $(call BANK_RULE,3))
 $(eval $(call BANK_RULE,4))
 $(eval $(call BANK_RULE,6))
 $(eval $(call BANK_RULE,7))
-
-$(BUILD)/bank3/vers.o: $(ROOT)/vers.c
-	@mkdir -p $(@D)
-	$(ZCC_ENV) $(ZCC) $(CFLAGS) -DZX_BANK_3 \
-		--codeseg CODE_3 --constseg RODATA_3 -c $< -o $@
 
 define STORAGE_RULE
 $(BUILD)/bank$(1)/bank_storage.o: bank_storage.c

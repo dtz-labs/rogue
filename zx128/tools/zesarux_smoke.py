@@ -1294,6 +1294,18 @@ def main() -> int:
         if not traversed_maze:
             raise RuntimeError("fixed deep-level seeds did not produce a traversable maze")
 
+        # 'v' formats `release` from bank 0.  When vers.c was built into bank 3
+        # the pointer survived the switch but the string it named did not, so
+        # the line read back whatever bank 0 happened to hold at that address.
+        version_message = send_physical_key_until_ocr(
+            sock, ord("v"), ("5.4.4",), args.timeout, "version message"
+        )
+        if "trap" in version_message:
+            raise RuntimeError(
+                f"version message shows another bank's text: {version_message!r}"
+            )
+        print("PASS 'v' reads the release string from resident memory")
+
         # A death must cold-restart the already loaded program, not enter the
         # Spectrum ROM.  Type a real name on the second boot to also verify
         # that key timing replaces the deterministic empty-name seed.
