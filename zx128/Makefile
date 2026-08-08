@@ -25,7 +25,7 @@ ZESARUX_FLAGS ?=
 # The one place the port's version is written down. CI and the release step
 # ask for it with `make print-version` / `print-dist-tap` rather than repeating
 # it.
-ZX128_VERSION ?= 0.1.1
+ZX128_VERSION ?= 0.1.2
 
 BUILD := build
 # z88dk's appmake locates the bank images by splitting the output name at the
