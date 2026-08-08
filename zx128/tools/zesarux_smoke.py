@@ -443,6 +443,26 @@ def maze_step(
     return None
 
 
+def leave_name_prompt(
+    sock: socket.socket, boot_stage: int, timeout: float, label: str
+) -> None:
+    """Send ENTER until the name prompt lets go, then wait out level setup.
+
+    A single ENTER here is dropped often enough to need resending, but building
+    the first level then takes seconds on its own. Retrying against one deadline
+    conflates the two, so a slower startup looks like a lost keypress and the
+    retries run out. Resend only while the prompt is still up -- the boot marker
+    leaves 'N' as soon as the key lands -- and time the setup separately.
+    """
+    deadline = time.monotonic() + timeout
+    while read_byte(sock, boot_stage) == ord("N"):
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"{label}: name prompt never accepted ENTER")
+        command(sock, "send-keys-ascii 200 13")
+        time.sleep(1.0)
+    wait_for_byte(sock, boot_stage, 0x52, timeout, label)
+
+
 def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
     """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
     deadline = time.monotonic() + timeout
@@ -593,15 +613,7 @@ def main() -> int:
             sock, ord(" "), boot_stage, ord("N"), args.timeout, "name prompt"
         )
         wait_for_ocr(sock, ("Name your hero", "ENTER keeps the name Rogue"), args.timeout)
-        for attempt in range(3):
-            command(sock, "send-keys-ascii 200 13")
-            try:
-                wait_for_byte(sock, boot_stage, 0x52, 2.0, "command loop")
-                break
-            except RuntimeError:
-                if attempt == 2:
-                    raise
-        wait_for_byte(sock, boot_stage, 0x52, args.timeout, "command loop")
+        leave_name_prompt(sock, boot_stage, args.timeout, "command loop")
         print("PASS startup quick help and default-name prompt")
         print(f"PASS boot reached command loop (stage=0x52 at 0x{boot_stage:04X})")
 
@@ -1281,14 +1293,7 @@ def main() -> int:
         send_physical_key_until_ocr(
             sock, ord("a"), ("> ada",), args.timeout, "third hero-name letter"
         )
-        for attempt in range(3):
-            command(sock, "send-keys-ascii 200 13")
-            try:
-                wait_for_byte(sock, boot_stage, 0x52, 2.0, "restarted command loop")
-                break
-            except RuntimeError:
-                if attempt == 2:
-                    raise
+        leave_name_prompt(sock, boot_stage, args.timeout, "restarted command loop")
         wait_for_rendered_game(sock, min(args.timeout, 5.0))
         stored_name = read_machine_ram(
             sock, bank_symbol_ram_address(hero_name), 4
@@ -1331,14 +1336,7 @@ def main() -> int:
         send_physical_key_until_byte(
             sock, ord(" "), boot_stage, ord("N"), args.timeout, "quit restart name"
         )
-        for attempt in range(3):
-            command(sock, "send-keys-ascii 200 13")
-            try:
-                wait_for_byte(sock, boot_stage, 0x52, 2.0, "post-quit command loop")
-                break
-            except RuntimeError:
-                if attempt == 2:
-                    raise
+        leave_name_prompt(sock, boot_stage, args.timeout, "post-quit command loop")
         wait_for_rendered_game(sock, min(args.timeout, 5.0))
         print("PASS confirmed quit also cold-restarts the game")
 
