@@ -57,7 +57,7 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-lndos -m -create-app
 
 FIXED_NAMES := extern io
-FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data viewport
+FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data viewport map_font
 FIXED_ASM_NAMES := fputc_cons_null
 BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options

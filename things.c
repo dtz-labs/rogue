@@ -539,7 +539,7 @@ add_line(char *fmt, char *arg)
     const char *prompt = "--Press space to continue--";
     static int maxlen;
 #ifdef ZX128
-    char overlay_line[ZX_VIEWPORT_COLS + 1];
+    char overlay_line[ZX_MAP_COLS + 1];
     int overlay_len;
 
     if (inv_type == INV_CLEAR)
@@ -564,8 +564,8 @@ add_line(char *fmt, char *arg)
 	if (fmt != NULL && !(line_cnt == 0 && *fmt == '\0'))
 	{
 	    overlay_len = snprintf(overlay_line, sizeof overlay_line, fmt, arg);
-	    if (overlay_len > ZX_VIEWPORT_COLS)
-		overlay_line[ZX_VIEWPORT_COLS - 1] = '>';
+	    if (overlay_len > ZX_MAP_COLS)
+		overlay_line[ZX_MAP_COLS - 1] = '>';
 	    zx_inventory_overlay_line((unsigned char)line_cnt++, overlay_line);
 	}
 	return ~ESCAPE;

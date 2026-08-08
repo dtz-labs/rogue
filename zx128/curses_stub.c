@@ -13,10 +13,18 @@
 static WINDOW screen_window;
 static WINDOW scratch_window;
 static unsigned char curses_ended;
-static unsigned char dirty_rows[ZX_SCREEN_ROWS];
-static unsigned char message_second_line;
+/*
+ * Dirty tracking is per row, but by column span rather than whole-row. A step
+ * changes two or three cells; redrawing all 32 of them was most of the cost of
+ * a move, and a vertical step pays it twice because it dirties two rows.
+ * first > last means the row is clean.
+ */
+static unsigned char dirty_first[ZX_SCREEN_ROWS];
+static unsigned char dirty_last[ZX_SCREEN_ROWS];
 volatile unsigned char zx_viewport_first_col;
 volatile unsigned char zx_rendered_rows;
+/* Cells actually redrawn by the last refresh: the real cost of a move. */
+volatile unsigned int zx_rendered_cells;
 volatile unsigned char zx_refresh_count;
 volatile unsigned char zx_refresh_turn;
 
@@ -27,10 +35,9 @@ void zx_screen_set(unsigned int index, unsigned char value);
 unsigned char zx_screen_get(unsigned int index);
 void zx_screen_fill(unsigned int index, unsigned int count,
                     unsigned char value);
-void zx_render_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
-void zx_render_map_row(unsigned char row, unsigned char first_col) ZX_BANKED_6;
-void zx_render_message_line(void) ZX_BANKED_6;
-void zx_render_status_row(unsigned char row) ZX_BANKED_6;
+void zx_render_row_span(unsigned char row, unsigned char first_col,
+                        unsigned char first_cell,
+                        unsigned char last_cell) ZX_BANKED_6;
 
 WINDOW *stdscr = &screen_window;
 WINDOW *curscr = &screen_window;
@@ -42,9 +49,24 @@ static unsigned int cell_index(WINDOW *win, int y, int x)
     return (unsigned int)(win->_begy + y) * ZX_SCREEN_COLS + win->_begx + x;
 }
 
+static void mark_dirty_cols(unsigned char row, unsigned char from,
+                            unsigned char to)
+{
+    if (from < dirty_first[row])
+        dirty_first[row] = from;
+    if (to > dirty_last[row])
+        dirty_last[row] = to;
+}
+
 static void mark_dirty(unsigned char row)
 {
-    dirty_rows[row] = TRUE;
+    mark_dirty_cols(row, 0, ZX_SCREEN_COLS - 1U);
+}
+
+static void mark_clean(unsigned char row)
+{
+    dirty_first[row] = ZX_SCREEN_COLS;
+    dirty_last[row] = 0;
 }
 
 static int format_to_window(WINDOW *win, const char *fmt, va_list args)
@@ -59,40 +81,33 @@ static void render_physical_screen(void)
 {
     unsigned char row;
     unsigned char first_col;
-    unsigned char second_line;
-    unsigned char dungeon_view;
 
     zx_rendered_rows = 0;
-
-    dungeon_view = zx_viewport_first_col != ZX_VIEWPORT_NONE;
-    first_col = dungeon_view ? zx_viewport_first_col : 0;
-    second_line = mpos > ZX_VISIBLE_COLS;
-    if (second_line != message_second_line ||
-        (second_line && dirty_rows[0]))
-        mark_dirty(1);
-    message_second_line = second_line;
+    zx_rendered_cells = 0;
+    first_col = zx_viewport_first_col == ZX_VIEWPORT_NONE
+        ? 0 : zx_viewport_first_col;
 
     for (row = 0; row < ZX_SCREEN_ROWS; ++row) {
-        unsigned char row_first = (row == 0 || row == ZX_SCREEN_ROWS - 1)
-            ? 0 : first_col;
-        if (!dirty_rows[row])
+        /* Messages and the status line are not panned with the dungeon. */
+        int row_first = (row == 0 || row == ZX_SCREEN_ROWS - 1) ? 0 : first_col;
+        int lo = dirty_first[row];
+        int hi = dirty_last[row];
+
+        if (lo > hi)
             continue;
-        dirty_rows[row] = FALSE;
+        mark_clean(row);
+        if (hi < row_first || lo >= row_first + ZX_MAP_COLS)
+            continue;               /* the change is outside the visible span */
+        if (lo < row_first)
+            lo = row_first;
+        if (hi >= row_first + ZX_MAP_COLS)
+            hi = row_first + ZX_MAP_COLS - 1;
         ++zx_rendered_rows;
-        if (row == 1 && second_line)
-            zx_render_message_line();
-        else if (row == ZX_SCREEN_ROWS - 1U)
-            zx_render_status_row(row);
-        else if (row == 0 || !dungeon_view)
-            /*
-             * Row 0 is the message line, and when no viewport is set these
-             * rows are not the dungeon at all -- they are the startup help,
-             * the '?' screen or the options list. All of that is prose, and
-             * the 4x8 font has no lower case, so it stays in the ROM font.
-             */
-            zx_render_row(row, row_first);
-        else
-            zx_render_map_row(row, row_first);
+        zx_rendered_cells += (unsigned int)
+            (((hi - row_first) >> 1) - ((lo - row_first) >> 1) + 1);
+        zx_render_row_span(row, (unsigned char)row_first,
+                           (unsigned char)((lo - row_first) >> 1),
+                           (unsigned char)((hi - row_first) >> 1));
     }
 }
 
@@ -169,7 +184,8 @@ int waddch(WINDOW *win, int ch)
         return ERR;
     row = win->_begy + win->_cury;
     zx_screen_set(cell_index(win, win->_cury, win->_curx), (unsigned char)ch);
-    mark_dirty(row);
+    mark_dirty_cols(row, (unsigned char)(win->_begx + win->_curx),
+                    (unsigned char)(win->_begx + win->_curx));
     if (++win->_curx >= win->_maxx) {
         win->_curx = 0;
         if (win->_cury + 1 < win->_maxy)
@@ -274,7 +290,9 @@ int wclrtoeol(WINDOW *win)
 {
     zx_screen_fill(cell_index(win, win->_cury, win->_curx),
                    win->_maxx - win->_curx, ' ');
-    mark_dirty(win->_begy + win->_cury);
+    mark_dirty_cols(win->_begy + win->_cury,
+                    (unsigned char)(win->_begx + win->_curx),
+                    (unsigned char)(win->_begx + win->_maxx - 1));
     return OK;
 }
 
@@ -303,8 +321,11 @@ int mvwin(WINDOW *win, int y, int x)
 
 int touchwin(WINDOW *win)
 {
+    unsigned char row;
+
     (void)win;
-    memset(dirty_rows, TRUE, sizeof dirty_rows);
+    for (row = 0; row < ZX_SCREEN_ROWS; ++row)
+        mark_dirty(row);
     return OK;
 }
 int clearok(WINDOW *win, int flag)
