@@ -49,6 +49,8 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-define:REGISTER_SP=0xbfff \
 	-pragma-define:CRT_STACK_SIZE=3072 \
 	-pragma-export:CLIB_BANKING_STACK_SIZE=256 \
+	-pragma-define:CLIB_OPT_PRINTF=0x40001601 \
+	-pragma-define:CLIB_OPT_PRINTF_2=0 \
 	-lndos -m -create-app
 
 # vers.c must stay resident. Its only live symbol here is `release`, a pointer

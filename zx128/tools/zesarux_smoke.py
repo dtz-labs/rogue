@@ -19,6 +19,7 @@ THING_POSITION_OFFSET = 4
 THING_TURN_OFFSET = 8
 THING_DEST_OFFSET = 12
 THING_FLAGS_OFFSET = 14
+THING_STATS_EXP_OFFSET = 18
 THING_STATS_LEVEL_OFFSET = 22
 THING_STATS_ARMOR_OFFSET = 24
 THING_STATS_HP_OFFSET = 26
@@ -575,6 +576,8 @@ def main() -> int:
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
     player_pack = required_symbol(symbols, "player") + THING_PACK_OFFSET
+    player_exp = required_symbol(symbols, "player") + THING_STATS_EXP_OFFSET
+    status_as_message = required_symbol(symbols, "stat_msg")
     origin = required_symbol(symbols, "CRT_ORG_CODE")
     for label, address in (
         ("boot marker", boot_stage),
@@ -1293,6 +1296,26 @@ def main() -> int:
         print("PASS 24-row map crosses all four bank boundaries without aliasing")
         if not traversed_maze:
             raise RuntimeError("fixed deep-level seeds did not produce a traversable maze")
+
+        # The status line holds the build's only %ld, and ordinary play keeps
+        # experience far below 65535, so nothing else here would notice a
+        # formatter that lost the high word.  Drive it past that and read the
+        # line back.  Under stat_msg the status goes to the message row in the
+        # ROM font, which OCR can read; the 4x8 status row cannot be read that
+        # way.  check_level only runs when experience is actually awarded, so
+        # writing the field here does not trigger a level-up message.
+        write_bytes(sock, status_as_message, 1)
+        write_dword(sock, player_exp, 123456)
+        exp_message = send_physical_key_until_ocr(
+            sock, ord("."), ("Exp:1/123456",), args.timeout, "status line experience"
+        )
+        if "Exp:1/57920" in exp_message:
+            raise RuntimeError(
+                "experience printed as a 16-bit value: the printf mask lost %ld"
+            )
+        write_dword(sock, player_exp, 0)
+        write_bytes(sock, status_as_message, 0)
+        print("PASS status line formats a 32-bit experience total with %ld")
 
         # 'v' formats `release` from bank 0.  When vers.c was built into bank 3
         # the pointer survived the switch but the string it named did not, so
