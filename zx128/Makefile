@@ -51,10 +51,7 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-export:CLIB_BANKING_STACK_SIZE=256 \
 	-lndos -m -create-app
 
-# vers.c must stay resident. Its only live symbol here is `release`, a pointer
-# that command.c dereferences from bank 0 for the 'v' command; built into a
-# bank, the pointer survives the switch but the string it names does not.
-FIXED_NAMES := extern io vers
+FIXED_NAMES := extern io
 FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data
 BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
