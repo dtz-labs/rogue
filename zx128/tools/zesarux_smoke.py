@@ -29,6 +29,7 @@ THING_ROOM_OFFSET = 43
 THING_PACK_OFFSET = 45
 OBJECT_TYPE_OFFSET = 4
 OBJECT_POSITION_OFFSET = 6
+OBJECT_PACK_CHAR_OFFSET = 14
 OBJECT_COUNT_OFFSET = 31
 OBJECT_WHICH_OFFSET = 33
 OBJECT_GOLD_VALUE_OFFSET = 39
@@ -42,6 +43,8 @@ ROOM_FLAGS_OFFSET = 14
 ISMAZE = 0x04
 ISRUN = 0x2000
 F_REAL = 0x10
+POTION = ord("!")
+P_TFIND = 7
 FLOOR = ord(".")
 PASSAGE = ord("#")
 STAIRS = ord("%")
@@ -899,6 +902,90 @@ def main() -> int:
         wait_for_byte(sock, last_comm, ord("v"), args.timeout, "post-save command")
         wait_for_ocr(sock, ("Version",), args.timeout)
         print("PASS potion pickup and following S command stay in the game")
+
+        # Potion of magic detection.  newwin() hands every caller the same
+        # cell buffer here, so hw and stdscr address one screen: the
+        # wclear(hw) that blanks the map before the MAGIC glyphs are drawn
+        # wipes the real dungeon, and show_win() only repaints from that same
+        # blank buffer.  Quaff a genuine detection potion and require the map
+        # back byte for byte once --More-- is dismissed.
+        detection_potion = 0
+        entry = read_word(sock, player_pack)
+        for _ in range(32):
+            if not entry or entry >= 0xC000:
+                break
+            if read_word(sock, entry + OBJECT_TYPE_OFFSET) == POTION:
+                detection_potion = entry
+                break
+            entry = read_word(sock, entry)
+        if not detection_potion:
+            raise RuntimeError("no pack potion to turn into magic detection")
+        write_bytes(sock, detection_potion + OBJECT_WHICH_OFFSET, P_TFIND, 0)
+        potion_letter = read_byte(sock, detection_potion + OBJECT_PACK_CHAR_OFFSET)
+        if not ord("a") <= potion_letter <= ord("z"):
+            raise RuntimeError(
+                f"pack potion carries no inventory letter: 0x{potion_letter:02X}"
+            )
+        # is_magic() only reports potions, scrolls, sticks, rings and the
+        # amulet, so leave one on the floor for the potion to find.
+        floor_object = read_word(sock, level_objects)
+        if not floor_object or floor_object >= 0xC000:
+            raise RuntimeError(f"level object has invalid address: 0x{floor_object:04X}")
+        write_bytes(sock, floor_object + OBJECT_TYPE_OFFSET, POTION, 0)
+        dungeon_rows_before_detection = read_machine_ram(
+            sock, screen_bank3 + 80, 22 * 80
+        )
+        turn_before_detection = read_byte(sock, turn_count)
+        write_bytes(sock, last_comm, 0)
+        send_physical_key_until_byte(
+            sock, ord("q"), last_comm, ord("q"), args.timeout, "quaff command"
+        )
+        wait_for_compact_ocr(sock, "quaff", args.timeout)
+        detection_ocr = send_physical_key_until_ocr(
+            sock,
+            potion_letter,
+            ("--More--",),
+            args.timeout,
+            "magic detection --More--",
+        )
+        if "presenceofmagic" not in "".join(detection_ocr.split()):
+            raise RuntimeError(
+                f"magic detection did not announce itself: {detection_ocr!r}"
+            )
+        # The command loop only bumps the turn counter once quaff() has
+        # returned, so this waits out the whole overlay instead of racing the
+        # emulator's keyboard scan.
+        completed_turn = send_physical_key_until_byte_change(
+            sock,
+            ord(" "),
+            turn_count,
+            turn_before_detection,
+            args.timeout,
+            "magic detection --More-- dismissal",
+        )
+        wait_for_byte(
+            sock,
+            refresh_turn,
+            completed_turn,
+            args.timeout,
+            "refresh after magic detection",
+        )
+        dungeon_rows_after_detection = read_machine_ram(
+            sock, screen_bank3 + 80, 22 * 80
+        )
+        if dungeon_rows_after_detection != dungeon_rows_before_detection:
+            lost = sum(
+                1
+                for before_cell, after_cell in zip(
+                    dungeon_rows_before_detection, dungeon_rows_after_detection
+                )
+                if before_cell != after_cell
+            )
+            raise RuntimeError(
+                "potion of magic detection did not restore the dungeon: "
+                f"{lost} of {22 * 80} map cells differ"
+            )
+        print("PASS potion of magic detection restores the dungeon after --More--")
 
         # Modal option editing must use an unshifted 32-column view and restore
         # the complete logical dungeon afterwards.  BREAK is Caps Shift+Space
