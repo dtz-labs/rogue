@@ -144,12 +144,22 @@ def main() -> int:
         errors.append(f"main binary is empty: {args.main_bin}")
     else:
         # zx_restart_game jumps to origin + 3: immediately after the CRT's
-        # initial CALL that loads the pageable images from tape.
+        # initial CALL that loads the pageable images from tape.  What the
+        # restart entry depends on is the shape -- a three-byte CALL, then the
+        # real CRT entry -- not the address being called.  That address is the
+        # tape loader's, and it moves whenever the CRT gains or loses a byte of
+        # startup code, so pinning it made every unrelated size change look
+        # like a broken restart entry.
         crt_prefix = args.main_bin.read_bytes()[:7]
-        if crt_prefix != bytes.fromhex("cd4960fd213a5c"):
+        call_target = int.from_bytes(crt_prefix[1:3], "little")
+        if (
+            crt_prefix[0] != 0xCD
+            or not 0x6000 <= call_target < BANK_WINDOW_ORIGIN
+            or crt_prefix[3:7] != bytes.fromhex("fd213a5c")
+        ):
             errors.append(
-                "CRT no longer starts with CALL 0x6049 followed by "
-                "LD IY,0x5c3a; "
+                "CRT no longer starts with a CALL into the fixed image "
+                "followed by LD IY,0x5c3a; "
                 "the restart entry at CRT_ORG_CODE + 3 must be reviewed"
             )
 
