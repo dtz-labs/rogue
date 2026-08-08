@@ -60,11 +60,12 @@ static void render_physical_screen(void)
     unsigned char row;
     unsigned char first_col;
     unsigned char second_line;
+    unsigned char dungeon_view;
 
     zx_rendered_rows = 0;
 
-    first_col = zx_viewport_first_col == ZX_VIEWPORT_NONE
-        ? 0 : zx_viewport_first_col;
+    dungeon_view = zx_viewport_first_col != ZX_VIEWPORT_NONE;
+    first_col = dungeon_view ? zx_viewport_first_col : 0;
     second_line = mpos > ZX_VISIBLE_COLS;
     if (second_line != message_second_line ||
         (second_line && dirty_rows[0]))
@@ -82,8 +83,14 @@ static void render_physical_screen(void)
             zx_render_message_line();
         else if (row == ZX_SCREEN_ROWS - 1U)
             zx_render_status_row(row);
-        else if (row == 0)
-            zx_render_row(row, row_first);   /* messages keep the ROM font */
+        else if (row == 0 || !dungeon_view)
+            /*
+             * Row 0 is the message line, and when no viewport is set these
+             * rows are not the dungeon at all -- they are the startup help,
+             * the '?' screen or the options list. All of that is prose, and
+             * the 4x8 font has no lower case, so it stays in the ROM font.
+             */
+            zx_render_row(row, row_first);
         else
             zx_render_map_row(row, row_first);
     }
