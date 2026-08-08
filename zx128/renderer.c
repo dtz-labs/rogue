@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define ZX_SCREEN_COLS 80
+#define ZX_SCREEN_ROWS 24
 #define ZX_VISIBLE_COLS 32
 #define ZX_STATUS_COLS (2 * ZX_VISIBLE_COLS)
 
@@ -53,21 +54,59 @@ static void draw_physical_cell(unsigned char row, unsigned char col,
  * '@' is deliberately NOT redrawn: the stock glyph is the densest thing in the
  * font, and against single-pixel floor it already reads as the player.
  */
-#define ZX_MAP_GLYPHS 7
+#define ZX_MAP_GLYPHS 8
+#define ZX_MAP_DASH 3          /* index of '-' in the table below */
 
 static const unsigned char zx_map_glyph_char[ZX_MAP_GLYPHS] = {
-    '.', '#', '|', '+', '%', ']', '^'
+    '.', '#', '|', '-', '+', '%', ']', '^'
 };
 
 static const unsigned char zx_map_glyph_data[ZX_MAP_GLYPHS][4] = {
     { 0x00, 0x00, 0x04, 0x00 },     /* . */
-    { 0xa0, 0xa0, 0xa0, 0xa0 },     /* # */
+    { 0x80, 0x20, 0x80, 0x20 },     /* # */
     { 0x44, 0x44, 0x44, 0x44 },     /* | */
+    { 0x00, 0x00, 0xf0, 0x00 },     /* - */
     { 0x00, 0x44, 0xe4, 0x40 },     /* + */
     { 0x88, 0x24, 0x48, 0x22 },     /* % */
     { 0xc4, 0x44, 0x44, 0xc0 },     /* ] */
     { 0x4a, 0x00, 0x00, 0x00 }      /* ^ */
 };
+
+/*
+ * Rogue stores a plain '-' in all four corners of a room -- horiz() draws the
+ * whole top and bottom row, vert() only the sides between them -- so a corner
+ * is not something the map records. It has to be recognised here.
+ *
+ * A '-' is a corner when the wall stops on exactly one side of it. '+' counts
+ * as the wall continuing, otherwise every door would read as two corners.
+ * Which corner it is comes from one probe: a '|' below means a top corner, a
+ * '|' above a bottom one. When neither is known yet -- a dark room revealed a
+ * cell at a time -- it stays an ordinary '-' rather than guessing.
+ */
+#define ZX_CORNER_TOP_LEFT     0
+#define ZX_CORNER_TOP_RIGHT    1
+#define ZX_CORNER_BOTTOM_LEFT  2
+#define ZX_CORNER_BOTTOM_RIGHT 3
+
+static const unsigned char zx_corner_glyph[4][4] = {
+    { 0x00, 0x00, 0x74, 0x44 },     /* top left     */
+    { 0x00, 0x00, 0xc4, 0x44 },     /* top right    */
+    { 0x44, 0x44, 0x70, 0x00 },     /* bottom left  */
+    { 0x44, 0x44, 0xc0, 0x00 }      /* bottom right */
+};
+
+static unsigned char is_wall_run(unsigned char ch)
+{
+    return (unsigned char)(ch == '-' || ch == '+');
+}
+
+static unsigned char cell_at(unsigned char row, unsigned char col)
+{
+    unsigned char ch;
+
+    zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS + col, &ch, 1);
+    return ch;
+}
 
 static const unsigned char *status_glyph(unsigned char ch)
 {
@@ -156,6 +195,45 @@ static const unsigned char *map_glyph(unsigned char ch)
 }
 
 /*
+ * Only ever consulted for a '-' whose wall run ends on one side, which is at
+ * most a couple of cells in a row, so the two probes stay cheap. Cells at the
+ * edge of the copied window have no neighbour to test and stay plain.
+ */
+static const unsigned char *corner_glyph(unsigned char row, unsigned char col,
+                                         unsigned char left_is_wall,
+                                         unsigned char right_is_wall)
+{
+    /* The wall carries on to the right, so this is the room's left edge. */
+    unsigned char is_left = (unsigned char)(right_is_wall && !left_is_wall);
+
+    if (left_is_wall == right_is_wall)
+        return zx_map_glyph_data[ZX_MAP_DASH];  /* run continues, or ends both ways */
+    if (row + 1U < ZX_SCREEN_ROWS && cell_at((unsigned char)(row + 1U), col) == '|')
+        return zx_corner_glyph[is_left ? ZX_CORNER_TOP_LEFT : ZX_CORNER_TOP_RIGHT];
+    if (row > 0U && cell_at((unsigned char)(row - 1U), col) == '|')
+        return zx_corner_glyph[is_left ? ZX_CORNER_BOTTOM_LEFT : ZX_CORNER_BOTTOM_RIGHT];
+    return zx_map_glyph_data[ZX_MAP_DASH];
+}
+
+static const unsigned char *map_cell_glyph(const unsigned char *logical_row,
+                                           unsigned char index,
+                                           unsigned char row,
+                                           unsigned char first_col)
+{
+    unsigned char ch = logical_row[index];
+    unsigned char left_is_wall;
+    unsigned char right_is_wall;
+
+    if (ch != '-' || index == 0U || index + 1U >= ZX_MAP_COLS)
+        return map_glyph(ch);
+
+    left_is_wall = is_wall_run(logical_row[index - 1U]);
+    right_is_wall = is_wall_run(logical_row[index + 1U]);
+    return corner_glyph(row, (unsigned char)(first_col + index),
+                        left_is_wall, right_is_wall);
+}
+
+/*
  * A map row in the 4x8 font: 64 dungeon columns in the same 32 cells, two
  * glyphs to a cell, exactly as the status row already does it. The message row
  * deliberately does not come through here -- it keeps the ROM font, because
@@ -170,8 +248,10 @@ void zx_render_map_row(unsigned char row, unsigned char first_col)
                    logical_row, ZX_MAP_COLS);
 
     for (col = 0; col < ZX_VISIBLE_COLS; ++col) {
-        const unsigned char *left = map_glyph(logical_row[col << 1]);
-        const unsigned char *right = map_glyph(logical_row[(col << 1) + 1]);
+        const unsigned char *left =
+            map_cell_glyph(logical_row, (unsigned char)(col << 1), row, first_col);
+        const unsigned char *right =
+            map_cell_glyph(logical_row, (unsigned char)((col << 1) + 1), row, first_col);
         unsigned char scanline;
 
         for (scanline = 0; scanline < 8U; ++scanline) {
