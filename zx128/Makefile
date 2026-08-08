@@ -21,13 +21,24 @@ ZESARUX ?= $(shell command -v zesarux 2>/dev/null || \
 	test ! -x /Applications/ZEsarUX.app/Contents/MacOS/zesarux || \
 	printf '%s' /Applications/ZEsarUX.app/Contents/MacOS/zesarux)
 ZESARUX_FLAGS ?=
-SMOKE_PBM ?= $(BUILD)/rogue-zx128-smoke.pbm
+
+# The one place the port's version is written down. CI and the release step
+# ask for it with `make print-version` / `print-dist-tap` rather than repeating
+# it.
+ZX128_VERSION ?= 0.1.0
 
 BUILD := build
+# z88dk's appmake locates the bank images by splitting the output name at the
+# first dot, so a dotted version here silently yields a TAP holding only the
+# loader and the fixed image -- it links and passes the object and layout
+# checks, and only fails when the machine tries to boot it. Build under the
+# plain name and stamp the version on at packaging time instead.
 BASENAME := $(BUILD)/rogue-zx128
 MAIN_BIN := $(BASENAME).bin
 MAP := $(BASENAME).map
 TAP := $(BASENAME).tap
+DIST_TAP := $(BUILD)/rogue-zx128-$(ZX128_VERSION).tap
+SMOKE_PBM ?= $(BUILD)/rogue-zx128-smoke.pbm
 
 CPPFLAGS := -DZX128 -Iinclude -I$(ROOT)
 OPT ?= -SO2 --max-allocs-per-node10000
@@ -67,8 +78,23 @@ COMMON_DEPS := Makefile $(ROOT)/rogue.h $(ROOT)/extern.h \
 
 $(OBJS): $(COMMON_DEPS)
 
-.PHONY: all build check-banked-objects check-zesarux clean layout run-zesarux run-zesarux-zx128 \
-	smoke-zesarux smoke-zesarux-zx128
+.PHONY: all build check-banked-objects check-zesarux clean dist layout print-dist-tap \
+	print-version run-zesarux run-zesarux-zx128 smoke-zesarux smoke-zesarux-zx128
+
+# Consumed by CI and the release step so the version lives here only.
+print-version:
+	@printf '%s\n' '$(ZX128_VERSION)'
+
+print-dist-tap:
+	@printf '%s\n' '$(notdir $(DIST_TAP))'
+
+# The distributable copy carries the version in its name so a downloaded TAP
+# identifies itself. CI runs this only after the smoke job, so an unbootable
+# TAP cannot reach a release.
+dist: $(DIST_TAP)
+
+$(DIST_TAP): $(TAP)
+	cp $< $@
 
 all: build
 

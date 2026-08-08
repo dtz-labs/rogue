@@ -52,12 +52,18 @@ jobs:
             --map zx128/build/rogue-zx128.map \
             --root .
 
+      - name: Stamp the version on a distributable copy
+        run: |
+          make -C zx128 --no-print-directory dist
+          ls -l "zx128/build/$(make -C zx128 --no-print-directory print-dist-tap)"
+
       - name: Upload TAP and linker outputs
         uses: actions/upload-artifact@v7
         with:
           name: zx128-build
           path: |
             zx128/build/rogue-zx128.tap
+            zx128/build/rogue-zx128-*.tap
             zx128/build/rogue-zx128.map
             zx128/build/rogue-zx128.bin
             zx128/build/rogue-zx128_BANK_*.bin
@@ -166,13 +172,24 @@ jobs:
           mkdir -p "$emulator_root"
           unzip -q "$archive" -d "$emulator_root"
 
+      - name: Name the distributable TAP
+        run: |
+          echo "ZX128_TAP=$(make -C zx128 --no-print-directory print-dist-tap)" \
+            >> "$GITHUB_ENV"
+
       - name: Assemble Pages site and licence notices
         run: |
           emulator_root="$RUNNER_TEMP/jsspeccy-$JSSPECCY_VERSION"
           mkdir -p _site
           cp -R zx128/site/. _site/
           cp -R "$emulator_root/jsspeccy" _site/jsspeccy
+          # Serve the version in the filename so a downloaded TAP identifies
+          # itself, and keep the plain name as a copy so the links already
+          # published in the READMEs keep resolving after every release.
+          cp zx128/build/rogue-zx128.tap "_site/$ZX128_TAP"
           cp zx128/build/rogue-zx128.tap _site/rogue-zx128.tap
+          sed -E -i "s/rogue-zx128(-[0-9][0-9.]*)?\.tap/$ZX128_TAP/g" \
+            _site/index.html _site/app.js
           cp LICENSE.TXT _site/LICENSE-ROGUE.txt
           cp "$emulator_root/COPYING" _site/COPYING-JSSPECCY3.txt
           cp "$emulator_root/README.md" _site/README-JSSPECCY3.md
@@ -185,7 +202,10 @@ jobs:
       - name: Validate Pages artifact
         run: |
           test -s _site/index.html
+          test -s "_site/$ZX128_TAP"
           test -s _site/rogue-zx128.tap
+          grep -q "$ZX128_TAP" _site/index.html
+          grep -q "$ZX128_TAP" _site/app.js
           test -s _site/jsspeccy/jsspeccy.js
           test -s _site/jsspeccy/jsspeccy-worker.js
           test -s _site/jsspeccy/jsspeccy-core.wasm
