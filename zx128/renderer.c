@@ -174,20 +174,23 @@ static void row_scanline_bases(unsigned char row, unsigned char **bases)
  * the neighbours either side of the span anyway.
  */
 void zx_render_row_span(unsigned char row, unsigned char first_col,
-                        unsigned char first_cell, unsigned char last_cell)
+                        unsigned char first_cell, unsigned char last_cell,
+                        unsigned char dungeon)
 {
     unsigned char logical_row[ZX_MAP_COLS];
-    unsigned char dungeon = (unsigned char)(row > 0U && row < ZX_SCREEN_ROWS - 1U);
+    const unsigned char *glyphs[ZX_MAP_COLS];
     unsigned char *bases[8];
     unsigned char col;
     unsigned char scanline;
     unsigned char blank = TRUE;
+    unsigned char count;
 
     zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS + first_col,
                    logical_row, ZX_MAP_COLS);
 
     if (last_cell >= ZX_VISIBLE_COLS)
         last_cell = ZX_VISIBLE_COLS - 1U;
+    count = (unsigned char)(last_cell - first_cell + 1U);
     row_scanline_bases(row, bases);
 
     for (col = (unsigned char)(first_cell << 1);
@@ -198,8 +201,6 @@ void zx_render_row_span(unsigned char row, unsigned char first_col,
         }
 
     if (blank) {
-        unsigned char count = (unsigned char)(last_cell - first_cell + 1U);
-
         for (scanline = 0; scanline < 8U; ++scanline)
             memset(bases[scanline] + first_cell, 0, count);
         memset(&((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS
@@ -207,29 +208,32 @@ void zx_render_row_span(unsigned char row, unsigned char first_col,
         return;
     }
 
-    for (col = first_cell; col <= last_cell; ++col) {
-        const unsigned char *left =
-            cell_glyph(logical_row, (unsigned char)(col << 1),
-                       row, first_col, dungeon);
-        const unsigned char *right =
-            cell_glyph(logical_row, (unsigned char)((col << 1) + 1U),
-                       row, first_col, dungeon);
+    /*
+     * Resolve every glyph in the span first, then walk the screen one scanline
+     * at a time. Interleaving the two meant indexing the base-address array
+     * for every byte written; this way each scanline is a straight run of
+     * increments, which is what a Z80 is good at.
+     */
+    for (col = (unsigned char)(first_cell << 1);
+         col <= (unsigned char)((last_cell << 1) + 1U); ++col)
+        glyphs[col] = cell_glyph(logical_row, col, row, first_col, dungeon);
 
-        /*
-         * One packed byte carries two scanlines, so four iterations cover the
-         * cell. Taking them one scanline at a time meant sixteen shift-and-mask
-         * steps per cell to undo work the packing had already done.
-         */
-        for (scanline = 0; scanline < 4U; ++scanline) {
-            unsigned char l = left[scanline];
-            unsigned char r = right[scanline];
+    for (scanline = 0; scanline < 4U; ++scanline) {
+        unsigned char *even = bases[scanline << 1] + first_cell;
+        unsigned char *odd = bases[(scanline << 1) + 1U] + first_cell;
+        const unsigned char **pair = &glyphs[first_cell << 1];
+        unsigned char n = count;
 
-            bases[scanline << 1][col] = (unsigned char)((l & 0xf0U) | (r >> 4));
-            bases[(scanline << 1) + 1U][col] =
-                (unsigned char)((l << 4) | (r & 0x0fU));
+        while (n-- != 0) {
+            unsigned char l = (*pair++)[scanline];
+            unsigned char r = (*pair++)[scanline];
+
+            *even++ = (unsigned char)((l & 0xf0U) | (r >> 4));
+            *odd++ = (unsigned char)((l << 4) | (r & 0x0fU));
         }
-        ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
     }
+    memset(&((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS
+                                       + first_cell], 7, count);
 }
 
 void zx_inventory_overlay_clear(void)

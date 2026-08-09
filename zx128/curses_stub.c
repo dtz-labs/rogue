@@ -36,8 +36,8 @@ unsigned char zx_screen_get(unsigned int index);
 void zx_screen_fill(unsigned int index, unsigned int count,
                     unsigned char value);
 void zx_render_row_span(unsigned char row, unsigned char first_col,
-                        unsigned char first_cell,
-                        unsigned char last_cell) ZX_BANKED_6;
+                        unsigned char first_cell, unsigned char last_cell,
+                        unsigned char dungeon) ZX_BANKED_6;
 
 WINDOW *stdscr = &screen_window;
 WINDOW *curscr = &screen_window;
@@ -81,11 +81,18 @@ static void render_physical_screen(void)
 {
     unsigned char row;
     unsigned char first_col;
+    /*
+     * Map glyphs -- a solid wall for '-', a single pixel for '.' -- must only
+     * be used where the rows really are the dungeon. Without a viewport they
+     * are the startup help, the '?' screen or the options list, and there a
+     * hyphen has to look like a hyphen. initscr(), clear() and options.c all
+     * clear the viewport, so it already carries this distinction.
+     */
+    unsigned char dungeon = zx_viewport_first_col != ZX_VIEWPORT_NONE;
 
     zx_rendered_rows = 0;
     zx_rendered_cells = 0;
-    first_col = zx_viewport_first_col == ZX_VIEWPORT_NONE
-        ? 0 : zx_viewport_first_col;
+    first_col = dungeon ? zx_viewport_first_col : 0;
 
     for (row = 0; row < ZX_SCREEN_ROWS; ++row) {
         /* Messages and the status line are not panned with the dungeon. */
@@ -107,7 +114,9 @@ static void render_physical_screen(void)
             (((hi - row_first) >> 1) - ((lo - row_first) >> 1) + 1);
         zx_render_row_span(row, (unsigned char)row_first,
                            (unsigned char)((lo - row_first) >> 1),
-                           (unsigned char)((hi - row_first) >> 1));
+                           (unsigned char)((hi - row_first) >> 1),
+                           (unsigned char)(dungeon && row > 0
+                                           && row < ZX_SCREEN_ROWS - 1U));
     }
 }
 
