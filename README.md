@@ -5,6 +5,8 @@
 
 ## [▶ Play Rogue ZX128 in your browser](https://dtz-labs.github.io/rogue/)
 
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
+
 This branch ports the classic Rogue 5.4.4 dungeon crawler to the ZX Spectrum
 128K. The browser player always receives the TAP that passed the bank-layout
 checks and the real-emulator smoke test in CI. Click the player's **▶** button,
@@ -17,10 +19,11 @@ and run on a Spectrum 128K or a compatible emulator.
 ## The port
 
 The original 80x24 dungeon is retained in banked RAM and displayed through a
-32-column Spectrum viewport. Code, mutable data, the dungeon map, inventory,
-and renderer are split across the 128K machine's pageable RAM banks. The port
-uses the Spectrum ROM keyboard and font, and produces a standard multi-block
-TAP with a BASIC loader.
+64-column Spectrum viewport: the whole screen is drawn in a 4x8 font, two
+glyphs to a character cell, so 64 of the level's 80 columns are visible at
+once. Code, mutable data, the dungeon map, inventory, and renderer are split
+across the 128K machine's pageable RAM banks. The port uses the Spectrum ROM
+keyboard and produces a standard multi-block TAP with a BASIC loader.
 
 Current highlights include:
 

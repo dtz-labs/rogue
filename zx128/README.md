@@ -29,14 +29,16 @@ Current scope:
 - save/restore, score files, shell escape, signals and Unix account handling
   are replaced by a small ZX platform layer;
 - `curses_stub.c` keeps an 80x24 logical screen in banked RAM and renders a
-  horizontally tracked 32-column viewport with the Spectrum ROM font;
-- refreshes redraw only changed character rows; the viewport remains stable
-  until the player moves outside its visible 32-column range.
+  horizontally tracked 64-column viewport in a 4x8 font, two glyphs per
+  character cell;
+- refreshes redraw only the changed columns of the changed rows, so an
+  ordinary step costs a few cells rather than a row; the viewport remains
+  stable until the player moves outside its visible 64-column range.
 
 The generated TAP boots to Rogue's first level, draws the dungeon and status
 line, accepts keyboard input and executes turns.  This is still a bring-up
-milestone rather than a complete port: save/score files are disabled, the
-viewport is intentionally narrow, and the remaining cross-bank pointer
+milestone rather than a complete port: save/score files are disabled, 64 of
+the 80 columns are visible at a time, and the remaining cross-bank pointer
 lifetimes and less common gameplay paths still need auditing.
 
 Descending with `>` has been checked in ZEsarUX: level 2 is generated and the
