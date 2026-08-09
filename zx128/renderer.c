@@ -150,23 +150,22 @@ static const unsigned char *cell_glyph(const unsigned char *logical_row,
                         is_wall_run(logical_row[index + 1U]));
 }
 
-static void draw_cell(unsigned char row, unsigned char col,
-                      const unsigned char *left, const unsigned char *right)
+/*
+ * The eight scanline addresses of a character row are the same for every cell
+ * in it, so they are worked out once here rather than eight times per cell.
+ * On a 32-cell row that is 256 address computations replaced by 8.
+ */
+static void row_scanline_bases(unsigned char row, unsigned char **bases)
 {
     unsigned char scanline;
 
     for (scanline = 0; scanline < 8U; ++scanline) {
         unsigned int pixel_y = ((unsigned int)row << 3) + scanline;
-        unsigned int address = 0x4000U
+        bases[scanline] = (unsigned char *)(0x4000U
             + ((pixel_y & 0xc0U) << 5)
             + ((pixel_y & 0x07U) << 8)
-            + ((pixel_y & 0x38U) << 2)
-            + col;
-        *(unsigned char *)address =
-            (unsigned char)((glyph_scanline(left, scanline) << 4)
-                            | glyph_scanline(right, scanline));
+            + ((pixel_y & 0x38U) << 2));
     }
-    ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
 }
 
 /*
@@ -174,6 +173,11 @@ static void draw_cell(unsigned char row, unsigned char col,
  * step dirties a couple of cells, not a whole row, and redrawing only those is
  * what keeps a move cheap -- particularly a vertical one, which dirties two
  * rows where a horizontal move dirties one.
+ *
+ * A span that is entirely blank is cleared with memset instead of drawn. That
+ * is the common case whenever a window is erased or an overlay comes down: the
+ * old path pushed a space glyph through the full per-cell pipeline for every
+ * one of 768 cells to write nothing but zeros.
  *
  * The whole logical row is read even for a narrow span: that is one banked
  * memcpy against per-cell work costing far more, and corner inference wants
@@ -184,19 +188,49 @@ void zx_render_row_span(unsigned char row, unsigned char first_col,
 {
     unsigned char logical_row[ZX_MAP_COLS];
     unsigned char dungeon = (unsigned char)(row > 0U && row < ZX_SCREEN_ROWS - 1U);
+    unsigned char *bases[8];
     unsigned char col;
+    unsigned char scanline;
+    unsigned char blank = TRUE;
 
     zx_screen_copy((unsigned int)row * ZX_SCREEN_COLS + first_col,
                    logical_row, ZX_MAP_COLS);
 
     if (last_cell >= ZX_VISIBLE_COLS)
         last_cell = ZX_VISIBLE_COLS - 1U;
-    for (col = first_cell; col <= last_cell; ++col)
-        draw_cell(row, col,
-                  cell_glyph(logical_row, (unsigned char)(col << 1),
-                             row, first_col, dungeon),
-                  cell_glyph(logical_row, (unsigned char)((col << 1) + 1U),
-                             row, first_col, dungeon));
+    row_scanline_bases(row, bases);
+
+    for (col = (unsigned char)(first_cell << 1);
+         col <= (unsigned char)((last_cell << 1) + 1U); ++col)
+        if (logical_row[col] != ' ') {
+            blank = FALSE;
+            break;
+        }
+
+    if (blank) {
+        unsigned char count = (unsigned char)(last_cell - first_cell + 1U);
+
+        for (scanline = 0; scanline < 8U; ++scanline)
+            memset(bases[scanline] + first_cell, 0, count);
+        memset(&((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS
+                                           + first_cell], 7, count);
+        return;
+    }
+
+    for (col = first_cell; col <= last_cell; ++col) {
+        const unsigned char *left =
+            cell_glyph(logical_row, (unsigned char)(col << 1),
+                       row, first_col, dungeon);
+        const unsigned char *right =
+            cell_glyph(logical_row, (unsigned char)((col << 1) + 1U),
+                       row, first_col, dungeon);
+
+        for (scanline = 0; scanline < 8U; ++scanline)
+            bases[scanline][col] =
+                (unsigned char)((glyph_scanline(left, scanline) << 4)
+                                | glyph_scanline(right, scanline));
+        ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
+    }
 }
 
 void zx_inventory_overlay_clear(void)
@@ -207,12 +241,21 @@ void zx_inventory_overlay_clear(void)
 
 void zx_inventory_overlay_line(unsigned char row, const char *text)
 {
+    unsigned char *bases[8];
     unsigned char col;
+    unsigned char scanline;
 
+    row_scanline_bases(row, bases);
     for (col = 0; col < ZX_VISIBLE_COLS; ++col) {
-        unsigned char a = (unsigned char)(*text != '\0' ? *text++ : ' ');
-        unsigned char b = (unsigned char)(*text != '\0' ? *text++ : ' ');
+        const unsigned char *left = font_glyph((unsigned char)
+            (*text != '\0' ? *text++ : ' '));
+        const unsigned char *right = font_glyph((unsigned char)
+            (*text != '\0' ? *text++ : ' '));
 
-        draw_cell(row, col, font_glyph(a), font_glyph(b));
+        for (scanline = 0; scanline < 8U; ++scanline)
+            bases[scanline][col] =
+                (unsigned char)((glyph_scanline(left, scanline) << 4)
+                                | glyph_scanline(right, scanline));
+        ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
     }
 }
