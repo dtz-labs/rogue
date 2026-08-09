@@ -21,9 +21,11 @@ void zx_screen_copy(unsigned int index, unsigned char *target,
  * in the same packing as the font.
  *
  *   '.'  the font's floor is a 2x2 block, which makes bare floor heavier than
- *        the items and monsters standing on it. One pixel is enough.
- *   '#'  one dot per cell on alternating columns. Corridors cover a lot of
- *        ground and have to stay a texture rather than compete with the walls.
+ *        the items and monsters standing on it. One pixel in the middle of the
+ *        cell is enough, and centring it makes bare floor read as an even grid.
+ *   '#'  a short dash rather than a dot. Corridors have to stay light, but a
+ *        dot at this size is the floor glyph again -- the two textures were
+ *        telling each other apart only by spacing. A dash reads as a track.
  *   '-'  the font draws it on columns 1..3, so a horizontal wall lost a pixel
  *        every fourth one and read as dashed. It has to be solid before a
  *        corner can meet it.
@@ -39,8 +41,8 @@ static const unsigned char zx_map_glyph_char[ZX_MAP_GLYPHS] = {
 };
 
 static const unsigned char zx_map_glyph_data[ZX_MAP_GLYPHS][4] = {
-    { 0x00, 0x00, 0x04, 0x00 },     /* . */
-    { 0x80, 0x00, 0x20, 0x00 },     /* # */
+    { 0x00, 0x00, 0x40, 0x00 },     /* . */
+    { 0x00, 0x00, 0xc0, 0x00 },     /* # */
     { 0x44, 0x44, 0x44, 0x44 },     /* | */
     { 0x00, 0x00, 0xf0, 0x00 },     /* - */
     { 0x00, 0x0e, 0xee, 0x00 },     /* + */
