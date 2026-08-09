@@ -74,6 +74,7 @@ int waddch(WINDOW *win, int ch);
 int mvwaddch(WINDOW *win, int y, int x, int ch);
 int addstr(const char *str);
 int mvaddstr(int y, int x, const char *str);
+int mvaddstr_centered(int y, const char *str);
 int waddstr(WINDOW *win, const char *str);
 int printw(const char *fmt, ...);
 int mvprintw(int y, int x, const char *fmt, ...);

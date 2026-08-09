@@ -30,6 +30,9 @@ char *inv_t_name[] = {
 
 extern volatile unsigned char zx_boot_stage;
 
+/* Centres a 22-column input field: "> " plus room for the name. */
+#define ZX_NAME_INPUT_X ((ZX_MAP_COLS - 22) / 2)
+
 bool
 zx_startup_name(void)
 {
@@ -38,9 +41,9 @@ zx_startup_name(void)
     int ch;
 
     clear();
-    mvaddstr(7, 4, "Name your hero");
-    mvaddstr(9, 2, "ENTER keeps the name Rogue");
-    mvaddstr(11, 4, "> ");
+    mvaddstr_centered(7, "Name your hero");
+    mvaddstr_centered(9, "ENTER keeps the name Rogue");
+    mvaddstr(11, ZX_NAME_INPUT_X, "> ");
     used = 0;
     zx_boot_stage = 'N';
     refresh();
@@ -51,8 +54,8 @@ zx_startup_name(void)
         if (ch == erasechar() || ch == 8) {
             if (used != 0) {
                 --used;
-                mvaddch(11, 6 + used, ' ');
-                move(11, 6 + used);
+                mvaddch(11, ZX_NAME_INPUT_X + 2 + used, ' ');
+                move(11, ZX_NAME_INPUT_X + 2 + used);
                 refresh();
             }
             continue;
@@ -60,7 +63,7 @@ zx_startup_name(void)
         if (!isprint(ch) || used >= sizeof name - 1)
             continue;
         name[used++] = (char)ch;
-        mvaddch(11, 6 + used - 1, ch);
+        mvaddch(11, ZX_NAME_INPUT_X + 2 + used - 1, ch);
         refresh();
     }
     if (used != 0 && ch != ESCAPE) {

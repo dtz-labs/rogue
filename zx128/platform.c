@@ -61,7 +61,7 @@ int main(void)
        clear() inside new_level() only blanks the buffer and nothing calls
        refresh() until the dungeon is drawn, so this notice stays on the
        physical screen for the whole wait without needing a flag. */
-    mvaddstr(11, 1, "Entering the dungeon, wait...");
+    mvaddstr_centered(11, "Entering the dungeon, wait...");
     refresh();
     init_probs();
     init_player();

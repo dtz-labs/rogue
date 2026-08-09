@@ -9,21 +9,30 @@ zx_startup_help(void)
     int ch;
 
     clear();
-    mvaddstr(0, 7, "ROGUE ZX128 - KEYS");
-    mvaddstr(2, 1, "h j k l / y u b n   move");
-    mvaddstr(3, 1, "SHIFT + direction   run");
-    mvaddstr(4, 1, "f/F + direction     fight");
-    mvaddstr(6, 1, "i inventory      , pick up");
-    mvaddstr(7, 1, "q potion         r scroll");
-    mvaddstr(8, 1, "e food           d drop");
-    mvaddstr(9, 1, "w wield          W wear");
-    mvaddstr(10, 1, "T take off       P/R rings");
-    mvaddstr(11, 1, "t throw          z zap");
-    mvaddstr(12, 1, "s search         ^ trap");
-    mvaddstr(13, 1, ">/< stairs        . rest");
-    mvaddstr(15, 1, "? command help   o options");
-    mvaddstr(16, 1, "BREAK cancels a command");
-    mvaddstr(19, 5, "SPACE - enter your name");
+    mvaddstr_centered(0, "ROGUE ZX128 - KEYS");
+
+    /* Two columns: 64 characters fit what used to need two screenfuls. */
+    mvaddstr(2, 2, "h j k l y u b n     move");
+    mvaddstr(3, 2, "SHIFT + direction   run");
+    mvaddstr(4, 2, "f/F + direction     fight");
+    mvaddstr(5, 2, "s search            ^ trap");
+    mvaddstr(6, 2, ">/< stairs          . rest");
+    mvaddstr(7, 2, "? command help      o options");
+
+    mvaddstr(2, 35, "i inventory   , pick up");
+    mvaddstr(3, 35, "q potion      r scroll");
+    mvaddstr(4, 35, "e food        d drop");
+    mvaddstr(5, 35, "w wield       W wear");
+    mvaddstr(6, 35, "T take off    P/R rings");
+    mvaddstr(7, 35, "t throw       z zap");
+
+    mvaddstr_centered(9, "BREAK cancels a command");
+
+    mvaddstr_centered(12, "Play in a browser, or fetch the latest");
+    mvaddstr_centered(13, "tested build:");
+    mvaddstr_centered(14, "dtz-labs.github.io/rogue");
+
+    mvaddstr_centered(19, "SPACE - enter your name");
     zx_boot_stage = 'H';
     refresh();
     do {

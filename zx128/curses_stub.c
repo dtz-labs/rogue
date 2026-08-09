@@ -209,6 +209,19 @@ int waddstr(WINDOW *win, const char *str)
 }
 
 int addstr(const char *str) { return waddstr(stdscr, str); }
+
+/*
+ * Centre a line in the 64 columns the 4x8 font gives us. The startup screens
+ * were laid out by hand for 32 and looked wedged against the left edge once
+ * the screen doubled.
+ */
+int mvaddstr_centered(int y, const char *str)
+{
+    int len = (int)strlen(str);
+    int x = (ZX_MAP_COLS - len) / 2;
+
+    return mvaddstr(y, x < 0 ? 0 : x, str);
+}
 int mvaddstr(int y, int x, const char *str)
 {
     return move(y, x) == ERR ? ERR : addstr(str);

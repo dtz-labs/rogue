@@ -80,16 +80,6 @@ static const unsigned char *font_glyph(unsigned char ch)
         + ((unsigned int)(ch - ZX_MAP_FONT_FIRST) * ZX_MAP_FONT_STRIDE);
 }
 
-/* One nibble per scanline, two scanlines to a byte, even scanline on top. */
-static unsigned char glyph_scanline(const unsigned char *glyph,
-                                    unsigned char scanline)
-{
-    unsigned char packed = glyph[scanline >> 1];
-
-    return (scanline & 1U) ? (unsigned char)(packed & 0x0fU)
-                           : (unsigned char)(packed >> 4);
-}
-
 static unsigned char is_wall_run(unsigned char ch)
 {
     return (unsigned char)(ch == '-' || ch == '+');
@@ -225,10 +215,19 @@ void zx_render_row_span(unsigned char row, unsigned char first_col,
             cell_glyph(logical_row, (unsigned char)((col << 1) + 1U),
                        row, first_col, dungeon);
 
-        for (scanline = 0; scanline < 8U; ++scanline)
-            bases[scanline][col] =
-                (unsigned char)((glyph_scanline(left, scanline) << 4)
-                                | glyph_scanline(right, scanline));
+        /*
+         * One packed byte carries two scanlines, so four iterations cover the
+         * cell. Taking them one scanline at a time meant sixteen shift-and-mask
+         * steps per cell to undo work the packing had already done.
+         */
+        for (scanline = 0; scanline < 4U; ++scanline) {
+            unsigned char l = left[scanline];
+            unsigned char r = right[scanline];
+
+            bases[scanline << 1][col] = (unsigned char)((l & 0xf0U) | (r >> 4));
+            bases[(scanline << 1) + 1U][col] =
+                (unsigned char)((l << 4) | (r & 0x0fU));
+        }
         ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
     }
 }
@@ -252,10 +251,19 @@ void zx_inventory_overlay_line(unsigned char row, const char *text)
         const unsigned char *right = font_glyph((unsigned char)
             (*text != '\0' ? *text++ : ' '));
 
-        for (scanline = 0; scanline < 8U; ++scanline)
-            bases[scanline][col] =
-                (unsigned char)((glyph_scanline(left, scanline) << 4)
-                                | glyph_scanline(right, scanline));
+        /*
+         * One packed byte carries two scanlines, so four iterations cover the
+         * cell. Taking them one scanline at a time meant sixteen shift-and-mask
+         * steps per cell to undo work the packing had already done.
+         */
+        for (scanline = 0; scanline < 4U; ++scanline) {
+            unsigned char l = left[scanline];
+            unsigned char r = right[scanline];
+
+            bases[scanline << 1][col] = (unsigned char)((l & 0xf0U) | (r >> 4));
+            bases[(scanline << 1) + 1U][col] =
+                (unsigned char)((l << 4) | (r & 0x0fU));
+        }
         ((unsigned char *)0x5800U)[(unsigned int)row * ZX_VISIBLE_COLS + col] = 7U;
     }
 }
