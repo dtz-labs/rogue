@@ -58,8 +58,9 @@ static const unsigned char zx_map_glyph_data[ZX_MAP_GLYPHS][4] = {
  *
  * A '-' is a corner when the wall run stops on exactly one side of it. '+'
  * counts as the run continuing, or every door would read as two corners. One
- * probe of the cell below, then above, says which of the four it is. When
- * neither is known yet, which happens in a dark room revealed a cell at a
+ * probe of the cell below, then above, says which of the four it is; a door
+ * counts there too, because a door in the side wall is still the side wall.
+ * When neither is known yet, which happens in a dark room revealed a cell at a
  * time, it stays an ordinary dash rather than guessing.
  */
 #define ZX_CORNER_TOP_LEFT     0
@@ -85,6 +86,16 @@ static const unsigned char *font_glyph(unsigned char ch)
 static unsigned char is_wall_run(unsigned char ch)
 {
     return (unsigned char)(ch == '-' || ch == '+');
+}
+
+/*
+ * A door sits in the wall it replaces, so a '+' directly under a corner is
+ * still the room's side, not a gap in it. Probing for '|' alone left those
+ * corners drawn as plain dashes.
+ */
+static unsigned char is_side_wall(unsigned char ch)
+{
+    return (unsigned char)(ch == '|' || ch == '+');
 }
 
 static unsigned char cell_at(unsigned char row, unsigned char col)
@@ -118,9 +129,10 @@ static const unsigned char *corner_glyph(unsigned char row, unsigned char col,
 
     if (left_is_wall == right_is_wall)
         return zx_map_glyph_data[ZX_MAP_DASH];
-    if (row + 1U < ZX_SCREEN_ROWS && cell_at((unsigned char)(row + 1U), col) == '|')
+    if (row + 1U < ZX_SCREEN_ROWS
+        && is_side_wall(cell_at((unsigned char)(row + 1U), col)))
         return zx_corner_glyph[is_left ? ZX_CORNER_TOP_LEFT : ZX_CORNER_TOP_RIGHT];
-    if (row > 0U && cell_at((unsigned char)(row - 1U), col) == '|')
+    if (row > 0U && is_side_wall(cell_at((unsigned char)(row - 1U), col)))
         return zx_corner_glyph[is_left ? ZX_CORNER_BOTTOM_LEFT : ZX_CORNER_BOTTOM_RIGHT];
     return zx_map_glyph_data[ZX_MAP_DASH];
 }

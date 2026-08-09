@@ -1547,6 +1547,57 @@ def main() -> int:
                     break
 
         print("PASS 24-row map crosses all four bank boundaries without aliasing")
+
+        # Corners are inferred from the cells around a '-', and a door sitting
+        # directly under one is still the room's side wall. Probing only for
+        # '|' left those corners drawn as a plain dash. Paint the shape
+        # straight into the cell buffer and read the pixels back: a dash lives
+        # on one scanline, a corner also has the stub below or above it.
+        # Anchor to wherever the viewport actually is by now, and keep the
+        # corner on the left half of a cell so its glyph is the high nibble.
+        corner_first_col = read_byte(sock, viewport_first_col)
+        corner_row, corner_col = 4, corner_first_col + 20
+        for offset, cell in ((0, ord("-")), (1, ord("-")), (2, ord("-"))):
+            write_machine_ram(
+                sock,
+                screen_bank3 + corner_row * MAP_ROW_STRIDE + corner_col + offset,
+                cell,
+            )
+        write_machine_ram(
+            sock, screen_bank3 + corner_row * MAP_ROW_STRIDE + corner_col - 1, ord(" ")
+        )
+        write_machine_ram(
+            sock,
+            screen_bank3 + (corner_row + 1) * MAP_ROW_STRIDE + corner_col,
+            ord("+"),                       # a door where the side wall starts
+        )
+        # CTRL-R redraws from the cell buffer without calling look(), which
+        # would paint over the shape we just planted.
+        before_corner_refresh = read_byte(sock, refresh_count)
+        write_bytes(sock, last_comm, 18)
+        send_physical_key(sock, ord("a"))
+        wait_for_byte_change(
+            sock, refresh_count, before_corner_refresh, args.timeout,
+            "redraw after corner setup",
+        )
+        cell_x = (corner_col - corner_first_col) // 2
+        ink_below = 0
+        for scanline in range(5, 8):
+            pixel_y = corner_row * 8 + scanline
+            address = (
+                0x4000
+                + ((pixel_y & 0xC0) << 5)
+                + ((pixel_y & 0x07) << 8)
+                + ((pixel_y & 0x38) << 2)
+                + cell_x
+            )
+            ink_below += bin(read_byte(sock, address)).count("1")
+        if ink_below == 0:
+            raise RuntimeError(
+                "corner above a door was drawn as a plain dash: no ink below "
+                f"the wall line in cell {cell_x} of row {corner_row}"
+            )
+        print("PASS a door under a corner still draws the corner")
         if not traversed_maze:
             raise RuntimeError("fixed deep-level seeds did not produce a traversable maze")
 
