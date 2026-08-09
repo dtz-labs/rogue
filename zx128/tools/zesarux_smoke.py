@@ -537,6 +537,11 @@ def load_font(sock: socket.socket, address: int) -> None:
     raw = read_bytes(sock, address, (FONT_LAST - FONT_FIRST + 1) * 4)
     for index in range(FONT_LAST - FONT_FIRST + 1):
         MAP_FONT.setdefault(raw[index * 4:index * 4 + 4], chr(FONT_FIRST + index))
+    if len(MAP_FONT) < 60:
+        raise RuntimeError(
+            f"font table looks unloaded: only {len(MAP_FONT)} distinct glyphs "
+            f"at 0x{address:04X}"
+        )
 
 
 def physical_text(sock: socket.socket) -> str:
@@ -763,8 +768,12 @@ def main() -> int:
     exited_cleanly = False
     try:
         sock = connect(proc, port, min(args.timeout, 10.0))
-        load_font(sock, font_address)
         wait_for_byte(sock, boot_stage, ord("H"), args.timeout, "startup help")
+        # After the tape is in, not before: at connect time the fixed image is
+        # still uninitialised RAM, and a font table read from zeros silently
+        # decodes every glyph as '?'. A fast host loads the tape before the
+        # ZRCP connection completes and hides this; CI does not.
+        load_font(sock, font_address)
         startup_help = wait_for_ocr(
             sock, ("ROGUE ZX128 - KEYS", "SPACE - enter your name"), args.timeout
         )
