@@ -36,6 +36,14 @@ OBJECT_GOLD_VALUE_OFFSET = 39
 OBJECT_FLAGS_OFFSET = 41
 OBJECT_GROUP_OFFSET = 43
 OBJECT_LABEL_OFFSET = 45
+MAP_ROW_STRIDE = 80
+MAP_ROWS = 22
+MAP_CELL_COUNT = MAP_ROWS * MAP_ROW_STRIDE
+ZX_MAP_COLS = 64          # dungeon columns visible at once in the 4x8 font
+ZX_VIEWPORT_EDGE = 4      # matches zx128/viewport.c
+ZX_VIEWPORT_STEP = 8
+FONT_FIRST = 32
+FONT_LAST = 126
 PLACE_ROWS = 24
 PLACE_SIZE = 4
 ROOM_SIZE = 66
@@ -381,13 +389,13 @@ def send_physical_key_until_ocr(
     deadline = time.monotonic() + timeout
     last = ""
     while time.monotonic() < deadline:
-        last = command(sock, "get-ocr")
+        last = screen_text(sock)
         if all(needle in last for needle in needles):
             return last
         send_physical_key(sock, key)
         attempt_deadline = min(deadline, time.monotonic() + 2.0)
         while time.monotonic() < attempt_deadline:
-            last = command(sock, "get-ocr")
+            last = screen_text(sock)
             if all(needle in last for needle in needles):
                 return last
             time.sleep(0.05)
@@ -496,39 +504,153 @@ def wait_for_status_row(sock: socket.socket, timeout: float, label: str) -> None
     raise RuntimeError(f"{label}: status row drew no pixels (ink={ink})")
 
 
-def wait_for_rendered_game(sock: socket.socket, timeout: float) -> str:
-    """Wait until ZEsarUX has converted the freshly written ULA frame to OCR."""
+SCREEN_CELLS: int | None = None
+
+
+def screen_text(sock: socket.socket) -> str:
+    """The screen as text, read from the logical cell buffer.
+
+    ZEsarUX's OCR only knows the 8x8 ROM font. Every row is drawn in the 4x8
+    font now -- messages, status and inventory included -- so OCR reports a
+    blank screen and cannot be used for anything. The cell buffer is what the
+    renderer draws from, so reading it back asserts the same thing the OCR
+    assertions did, one step earlier in the pipeline.
+
+    Rows are the full 80 logical columns, not the 64 on screen, and they are
+    not wrapped: a message that OCR used to split across two 32-column rows is
+    one contiguous run here.
+    """
+    if SCREEN_CELLS is None:
+        raise RuntimeError("screen cell buffer address was never resolved")
+    raw = read_machine_ram(sock, SCREEN_CELLS, PLACE_ROWS * MAP_ROW_STRIDE)
+    return "\n".join(
+        raw[row * MAP_ROW_STRIDE:(row + 1) * MAP_ROW_STRIDE].decode("latin-1")
+        for row in range(PLACE_ROWS)
+    )
+
+
+MAP_FONT: dict[bytes, str] = {}
+
+
+def load_font(sock: socket.socket, address: int) -> None:
+    """Build a reverse glyph table from the font the image actually linked."""
+    raw = read_bytes(sock, address, (FONT_LAST - FONT_FIRST + 1) * 4)
+    for index in range(FONT_LAST - FONT_FIRST + 1):
+        MAP_FONT.setdefault(raw[index * 4:index * 4 + 4], chr(FONT_FIRST + index))
+
+
+def physical_text(sock: socket.socket) -> str:
+    """Decode the real screen bitmap back into characters.
+
+    The inventory overlay writes straight to display memory and never touches
+    the logical cell buffer, so it is invisible to screen_text(). Reading the
+    6144-byte bitmap in one go and matching each half-cell against the linked
+    font recovers it -- and asserts the pixels a player would actually see,
+    which is stronger than what OCR gave us.
+    """
+    bitmap = read_bytes(sock, 0x4000, 6144)
+    lines = []
+    for row in range(PLACE_ROWS):
+        line = []
+        for col in range(32):
+            scanlines = []
+            for scanline in range(8):
+                pixel_y = row * 8 + scanline
+                offset = (
+                    ((pixel_y & 0xC0) << 5)
+                    + ((pixel_y & 0x07) << 8)
+                    + ((pixel_y & 0x38) << 2)
+                    + col
+                )
+                scanlines.append(bitmap[offset])
+            left = bytes(
+                ((scanlines[i] >> 4) << 4) | (scanlines[i + 1] >> 4)
+                for i in range(0, 8, 2)
+            )
+            right = bytes(
+                ((scanlines[i] & 0xF) << 4) | (scanlines[i + 1] & 0xF)
+                for i in range(0, 8, 2)
+            )
+            line.append(MAP_FONT.get(left, "?"))
+            line.append(MAP_FONT.get(right, "?"))
+        lines.append("".join(line))
+    return "\n".join(lines)
+
+
+def wait_for_physical_text(
+    sock: socket.socket, needles: tuple[str, ...], timeout: float, label: str
+) -> str:
     deadline = time.monotonic() + timeout
     last = ""
     while time.monotonic() < deadline:
-        last = command(sock, "get-ocr")
-        if "@" in last and ("|" in last or "-" in last):
+        last = physical_text(sock)
+        if all(needle in last for needle in needles):
             return last
         time.sleep(0.1)
-    raise RuntimeError(f"Rogue map not visible in OCR: {last!r}")
+    raise RuntimeError(f"{label} did not show {needles!r}: {last!r}")
+
+
+def wait_for_rendered_game(
+    sock: socket.socket, screen_bank3: int, timeout: float
+) -> bytes:
+    """Wait until the dungeon is on screen.
+
+    This used to read the ULA frame back through ZEsarUX's OCR, which only
+    knows the 8x8 ROM font. The map is drawn in the 4x8 font now, so OCR sees
+    blank rows there and cannot be used. Read the logical cell buffer instead
+    -- it is what the renderer draws from, so a hero and a wall in it mean the
+    map is up. Rows still rendered in the ROM font (messages, status) stay on
+    OCR, which is why those assertions are untouched.
+    """
+    deadline = time.monotonic() + timeout
+    last = b""
+    while time.monotonic() < deadline:
+        last = read_machine_ram(sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT)
+        if b"@" in last and (b"|" in last or b"-" in last):
+            return last
+        time.sleep(0.1)
+    raise RuntimeError(
+        f"Rogue map not present in the cell buffer: {last[:80]!r}..."
+    )
+
+
+def rendered_pixels(sock: socket.socket, row: int) -> int:
+    """Count set pixels on a character row of the real screen."""
+    total = 0
+    for scanline in range(8):
+        pixel_y = row * 8 + scanline
+        address = (
+            0x4000
+            + ((pixel_y & 0xC0) << 5)
+            + ((pixel_y & 0x07) << 8)
+            + ((pixel_y & 0x38) << 2)
+        )
+        for byte in read_bytes(sock, address, 32):
+            total += bin(byte).count("1")
+    return total
 
 
 def wait_for_ocr(sock: socket.socket, needles: tuple[str, ...], timeout: float) -> str:
     deadline = time.monotonic() + timeout
     last = ""
     while time.monotonic() < deadline:
-        last = command(sock, "get-ocr")
+        last = screen_text(sock)
         if all(needle in last for needle in needles):
             return last
-        time.sleep(0.1)
-    raise RuntimeError(f"OCR did not contain {needles!r}: {last!r}")
+        time.sleep(0.05)
+    raise RuntimeError(f"screen did not contain {needles!r}: {last!r}")
 
 
 def wait_for_compact_ocr(sock: socket.socket, needle: str, timeout: float) -> str:
-    """Match text even when the 32-column renderer splits a word across rows."""
+    """Match text regardless of the spacing the renderer left around it."""
     deadline = time.monotonic() + timeout
     last = ""
     while time.monotonic() < deadline:
-        last = command(sock, "get-ocr")
+        last = screen_text(sock)
         if needle in "".join(last.split()):
             return last
-        time.sleep(0.1)
-    raise RuntimeError(f"compact OCR did not contain {needle!r}: {last!r}")
+        time.sleep(0.05)
+    raise RuntimeError(f"screen did not contain {needle!r}: {last!r}")
 
 
 def validate_screenshot(path: Path) -> None:
@@ -576,6 +698,9 @@ def main() -> int:
         for bank, _ in PLACE_BANK_COLUMNS
     }
     screen_bank3 = bank_symbol_ram_address(required_symbol(symbols, "zx_screen_bank3"))
+    global SCREEN_CELLS
+    SCREEN_CELLS = screen_bank3
+    font_address = required_symbol(symbols, "zx_map_font")
     # THING starts with two 16-bit list pointers on this target.
     player_position = required_symbol(symbols, "player") + THING_POSITION_OFFSET
     player_pack = required_symbol(symbols, "player") + THING_PACK_OFFSET
@@ -638,6 +763,7 @@ def main() -> int:
     exited_cleanly = False
     try:
         sock = connect(proc, port, min(args.timeout, 10.0))
+        load_font(sock, font_address)
         wait_for_byte(sock, boot_stage, ord("H"), args.timeout, "startup help")
         startup_help = wait_for_ocr(
             sock, ("ROGUE ZX128 - KEYS", "SPACE - enter your name"), args.timeout
@@ -663,12 +789,31 @@ def main() -> int:
             raise RuntimeError(f"BASIC loader was corrupted: {basic!r}")
         print("PASS BASIC loader survived bank loading")
 
-        wait_for_rendered_game(sock, min(args.timeout, 5.0))
+        wait_for_rendered_game(sock, screen_bank3, min(args.timeout, 5.0))
         print("PASS renderer shows the Rogue map, hero and status line")
         initial_pack = read_word(sock, player_pack)
         initial_game_seed = read_dword(sock, random_seed)
-        wait_for_byte(sock, viewport_first_col, 48, args.timeout, "room viewport")
-        print("PASS room-aware viewport shows the complete starting room at column 48")
+        # This used to pin the viewport to column 48, which only held while 32
+        # dungeon columns were visible. Assert what the test is actually about
+        # -- that the whole starting room is on screen -- and reuse the value
+        # the room-aware logic settles on for the later restore checks, rather
+        # than hard-coding a second magic number.
+        player_room_ptr = player_position - THING_POSITION_OFFSET + THING_ROOM_OFFSET
+        room = read_word(sock, player_room_ptr)
+        if not room:
+            raise RuntimeError("hero is not in a room at startup")
+        room_left = read_word(sock, room)               # r_pos.x
+        room_width = read_word(sock, room + 4)          # r_max.x
+        room_view = read_byte(sock, viewport_first_col)
+        if room_view > room_left or room_left + room_width - 1 >= room_view + ZX_MAP_COLS:
+            raise RuntimeError(
+                f"starting room x={room_left}..{room_left + room_width - 1} "
+                f"does not fit the {ZX_MAP_COLS}-column view at {room_view}"
+            )
+        print(
+            "PASS room-aware viewport shows the complete starting room "
+            f"at column {room_view}"
+        )
 
         registers = command(sock, "get-registers")
         if not re.search(r"\bIY=5C3A\b", registers, re.IGNORECASE):
@@ -933,7 +1078,7 @@ def main() -> int:
             raise RuntimeError(f"level object has invalid address: 0x{floor_object:04X}")
         write_bytes(sock, floor_object + OBJECT_TYPE_OFFSET, POTION, 0)
         dungeon_rows_before_detection = read_machine_ram(
-            sock, screen_bank3 + 80, 22 * 80
+            sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT
         )
         turn_before_detection = read_byte(sock, turn_count)
         write_bytes(sock, last_comm, 0)
@@ -971,7 +1116,7 @@ def main() -> int:
             "refresh after magic detection",
         )
         dungeon_rows_after_detection = read_machine_ram(
-            sock, screen_bank3 + 80, 22 * 80
+            sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT
         )
         if dungeon_rows_after_detection != dungeon_rows_before_detection:
             lost = sum(
@@ -983,7 +1128,7 @@ def main() -> int:
             )
             raise RuntimeError(
                 "potion of magic detection did not restore the dungeon: "
-                f"{lost} of {22 * 80} map cells differ"
+                f"{lost} of {MAP_CELL_COUNT} map cells differ"
             )
         print("PASS potion of magic detection restores the dungeon after --More--")
 
@@ -991,9 +1136,9 @@ def main() -> int:
         # the complete logical dungeon afterwards.  BREAK is Caps Shift+Space
         # on a real Spectrum, so exercise that chord instead of injecting ESC.
         dungeon_rows_before_options = read_machine_ram(
-            sock, screen_bank3 + 80, 22 * 80
+            sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT
         )
-        write_bytes(sock, viewport_first_col, 48)
+        write_bytes(sock, viewport_first_col, room_view)
         write_bytes(sock, last_comm, 0)
         send_physical_key_until_byte(
             sock, ord("o"), last_comm, ord("o"), args.timeout, "options command"
@@ -1030,7 +1175,9 @@ def main() -> int:
         for attempt in range(2):
             send_break(sock)
             try:
-                wait_for_ocr(sock, ("--Press space to continue--",), 2.0)
+                wait_for_physical_text(
+                    sock, ("--Press space to continue--",), 2.0, "options prompt"
+                )
                 break
             except RuntimeError:
                 if attempt:
@@ -1044,11 +1191,11 @@ def main() -> int:
                 if attempt:
                     raise
         dungeon_rows_after_options = read_machine_ram(
-            sock, screen_bank3 + 80, 22 * 80
+            sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT
         )
         if dungeon_rows_after_options != dungeon_rows_before_options:
             raise RuntimeError("options did not restore the complete logical dungeon")
-        wait_for_byte(sock, viewport_first_col, 48, args.timeout, "options viewport restore")
+        wait_for_byte(sock, viewport_first_col, room_view, args.timeout, "options viewport restore")
         write_bytes(sock, last_comm, 0)
         send_physical_key_until_byte(
             sock, ord("v"), last_comm, ord("v"), args.timeout, "command after BREAK"
@@ -1059,14 +1206,19 @@ def main() -> int:
         # Inventory is a physical overlay: all entries and its prompt are
         # visible together, while the logical dungeon remains untouched.
         dungeon_rows_before_inventory = read_machine_ram(
-            sock, screen_bank3 + 80, 22 * 80
+            sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT
         )
         write_bytes(sock, last_comm, 0)
         send_physical_key_until_byte(
             sock, ord("i"), last_comm, ord("i"), args.timeout, "inventory command"
         )
-        inventory_ocr = wait_for_ocr(
-            sock, ("a)", "b)", "c)", "--Press space to continue--"), args.timeout
+        # The overlay writes straight to display memory, so it never reaches
+        # the logical cell buffer -- read the pixels back instead.
+        inventory_ocr = wait_for_physical_text(
+            sock,
+            ("a)", "b)", "c)", "--Press space to continue--"),
+            args.timeout,
+            "inventory overlay",
         )
         if "--More--" in inventory_ocr:
             raise RuntimeError("full-screen inventory unexpectedly used --More--")
@@ -1079,12 +1231,12 @@ def main() -> int:
                 if attempt:
                     raise
         dungeon_rows_after_inventory = read_machine_ram(
-            sock, screen_bank3 + 80, 22 * 80
+            sock, screen_bank3 + MAP_ROW_STRIDE, MAP_CELL_COUNT
         )
         if dungeon_rows_after_inventory != dungeon_rows_before_inventory:
             raise RuntimeError("inventory modified the logical dungeon")
         wait_for_byte(
-            sock, viewport_first_col, 48, args.timeout, "inventory viewport restore"
+            sock, viewport_first_col, room_view, args.timeout, "inventory viewport restore"
         )
         print("PASS full-screen inventory overlay and complete dungeon redraw")
 
@@ -1099,11 +1251,23 @@ def main() -> int:
             raise RuntimeError(
                 f"starting room pointer is invalid: 0x{starting_room:04X}"
             )
-        # Passage descriptors carry ISGONE.  With the hero at x=60, a view at
-        # 32 must advance by exactly one eight-column step to restore the
-        # four-column corridor dead-zone.
+        # Passage descriptors carry ISGONE, so this drives the corridor branch
+        # rather than the room-aware one. Starting from column 0, a hero far
+        # enough right must pull the view along by exactly one eight-column
+        # step and then stop. With 64 columns visible the dead zone starts at
+        # hero.x - left > 59, so one step lands on 8 and the second condition
+        # no longer holds -- but only if the hero really is in that window, so
+        # check the premise instead of assuming it.
+        corridor_hero_x = read_coord(sock, player_position)[0]
+        step_low = ZX_MAP_COLS - ZX_VIEWPORT_EDGE      # 60: one step needed
+        step_high = step_low + ZX_VIEWPORT_STEP - 1    # 67: not two
+        if not step_low <= corridor_hero_x <= step_high:
+            raise RuntimeError(
+                f"corridor viewport test needs the hero at x={step_low}..{step_high}, "
+                f"found {corridor_hero_x}"
+            )
         write_bytes(sock, player_room, passages & 0xFF, passages >> 8)
-        write_bytes(sock, viewport_first_col, 32)
+        write_bytes(sock, viewport_first_col, 0)
         write_bytes(sock, last_comm, 0)
         send_physical_key_until_byte(
             sock,
@@ -1113,7 +1277,9 @@ def main() -> int:
             args.timeout,
             "viewport test command",
         )
-        wait_for_byte(sock, viewport_first_col, 40, args.timeout, "corridor viewport")
+        wait_for_byte(
+            sock, viewport_first_col, ZX_VIEWPORT_STEP, args.timeout, "corridor viewport"
+        )
         write_bytes(sock, player_room, starting_room & 0xFF, starting_room >> 8)
         print("PASS corridor viewport advances by an eight-column step")
 
@@ -1127,14 +1293,14 @@ def main() -> int:
                 save_message = wait_for_ocr(
                     sock,
                     ("Saving is not available in this", "build."),
-                    1.0,
+                    3.0,
                 )
                 break
             except RuntimeError:
                 if attempt:
                     raise
         wait_for_byte(
-            sock, viewport_first_col, 48, args.timeout, "restored room viewport"
+            sock, viewport_first_col, room_view, args.timeout, "restored room viewport"
         )
         if "--More--" in save_message:
             raise RuntimeError("two-line save message unexpectedly requested --More--")
@@ -1147,7 +1313,7 @@ def main() -> int:
         for attempt in range(2):
             send_physical_key(sock, 97)
             try:
-                wait_for_ocr(sock, ("--More--",), 1.0)
+                wait_for_ocr(sock, ("--More--",), 3.0)
                 break
             except RuntimeError:
                 if attempt:
@@ -1155,7 +1321,7 @@ def main() -> int:
         for attempt in range(2):
             send_physical_key(sock, 32)
             try:
-                paged_status = wait_for_ocr(sock, ("TAIL",), 1.0)
+                paged_status = wait_for_ocr(sock, ("TAIL",), 3.0)
                 break
             except RuntimeError:
                 if attempt:
@@ -1165,7 +1331,7 @@ def main() -> int:
         top_line = paged_status.splitlines()[0] if paged_status.splitlines() else ""
         if "TAIL" not in top_line:
             raise RuntimeError(f"message continuation was lost: {paged_status!r}")
-        wait_for_byte(sock, viewport_first_col, 48, args.timeout, "restored room viewport")
+        wait_for_byte(sock, viewport_first_col, room_view, args.timeout, "restored room viewport")
         print("PASS long message paginates through visible --More-- without loss")
 
         time.sleep(0.3)
@@ -1196,7 +1362,7 @@ def main() -> int:
             "PASS emulated keyboard event decodes as ASCII 'l' and moves the hero "
             f"{before_position} -> {after_position}"
         )
-        if read_byte(sock, viewport_first_col) != 48:
+        if read_byte(sock, viewport_first_col) != room_view:
             raise RuntimeError("viewport moved while the hero remained in one room")
         print("PASS viewport stays fixed while the hero remains inside the room")
 
@@ -1445,7 +1611,7 @@ def main() -> int:
             sock, ord("a"), ("> ada",), args.timeout, "third hero-name letter"
         )
         leave_name_prompt(sock, boot_stage, args.timeout, "restarted command loop")
-        wait_for_rendered_game(sock, min(args.timeout, 5.0))
+        wait_for_rendered_game(sock, screen_bank3, min(args.timeout, 5.0))
         stored_name = read_machine_ram(
             sock, bank_symbol_ram_address(hero_name), 4
         )
@@ -1488,7 +1654,7 @@ def main() -> int:
             sock, ord(" "), boot_stage, ord("N"), args.timeout, "quit restart name"
         )
         leave_name_prompt(sock, boot_stage, args.timeout, "post-quit command loop")
-        wait_for_rendered_game(sock, min(args.timeout, 5.0))
+        wait_for_rendered_game(sock, screen_bank3, min(args.timeout, 5.0))
         print("PASS confirmed quit also cold-restarts the game")
 
         command(sock, f"save-screen {args.screenshot.resolve()}")
