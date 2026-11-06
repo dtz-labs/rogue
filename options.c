@@ -167,7 +167,7 @@ option()
 	    }
 	    else	/* trying to back up beyond the top */
 	    {
-		putchar('\007');
+		beep();
 		wmove(hw, 0, 0);
 		op--;
 	    }
@@ -409,7 +409,7 @@ get_str(void *vopt, WINDOW *win)
 	    }
 	}
 	if (sp >= &buf[MAXINP] || !(isprint(c) || c == ' '))
-	    putchar(CTRL('G'));
+	    beep();
 	else
 	{
 	    *sp++ = c;

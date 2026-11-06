@@ -49,19 +49,26 @@ LDFLAGS := +zx -compiler=sdcc $(OPT) $(WARNFLAGS) -vn \
 	-pragma-define:REGISTER_SP=0xbfff \
 	-pragma-define:CRT_STACK_SIZE=3072 \
 	-pragma-export:CLIB_BANKING_STACK_SIZE=256 \
+	-pragma-define:CRT_ENABLE_STDIO=0 \
+	-pragma-redirect:fputc_cons=zx_fputc_cons_null \
+	-pragma-define:CLIB_EXIT_STACK_SIZE=0 \
+	-pragma-define:CLIB_OPT_PRINTF=0x40001601 \
+	-pragma-define:CLIB_OPT_PRINTF_2=0 \
 	-lndos -m -create-app
 
 FIXED_NAMES := extern io
 FIXED_LOCAL_NAMES := platform curses_stub callback_thunks banked_data
+FIXED_ASM_NAMES := fputc_cons_null
 BANK0_NAMES := command move armor rings help_zx
 BANK1_NAMES := pack things options
-BANK3_NAMES := init misc monsters wizard vers rip_zx
+BANK3_NAMES := init misc monsters wizard rip_zx
 BANK4_NAMES := potions scrolls sticks weapons restart_storage
 BANK6_NAMES := chase fight daemons renderer viewport message
 BANK7_NAMES := new_level rooms passages daemon list screen_snapshot restart_snapshot
 
 FIXED_OBJS := $(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_NAMES))) \
-	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES)))
+	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_LOCAL_NAMES))) \
+	$(addprefix $(BUILD)/fixed/,$(addsuffix .o,$(FIXED_ASM_NAMES)))
 BANK0_OBJS := $(addprefix $(BUILD)/bank0/,$(addsuffix .o,$(BANK0_NAMES)))
 BANK1_OBJS := $(addprefix $(BUILD)/bank1/,$(addsuffix .o,$(BANK1_NAMES)))
 BANK3_OBJS := $(addprefix $(BUILD)/bank3/,$(addsuffix .o,$(BANK3_NAMES)))
@@ -109,6 +116,10 @@ $(BUILD)/fixed/%.o: %.c
 	@mkdir -p $(@D)
 	$(ZCC_ENV) $(ZCC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/fixed/%.o: %.asm
+	@mkdir -p $(@D)
+	$(ZCC_ENV) $(ZCC) $(CFLAGS) -c $< -o $@
+
 define BANK_RULE
 $(BUILD)/bank$(1)/%.o: $(ROOT)/%.c
 	@mkdir -p $$(@D)
@@ -129,11 +140,6 @@ $(eval $(call BANK_RULE,3))
 $(eval $(call BANK_RULE,4))
 $(eval $(call BANK_RULE,6))
 $(eval $(call BANK_RULE,7))
-
-$(BUILD)/bank3/vers.o: $(ROOT)/vers.c
-	@mkdir -p $(@D)
-	$(ZCC_ENV) $(ZCC) $(CFLAGS) -DZX_BANK_3 \
-		--codeseg CODE_3 --constseg RODATA_3 -c $< -o $@
 
 define STORAGE_RULE
 $(BUILD)/bank$(1)/bank_storage.o: bank_storage.c

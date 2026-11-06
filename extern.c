@@ -52,7 +52,17 @@ bool pack_used[26] = {			/* Is the character used in the pack? */
 #endif
 
 char dir_ch;				/* Direction from last get_dir() call */
-#ifndef ZX128
+#ifdef ZX128
+/*
+ * vers.c is not linked on this target: encstr, statlist and version exist
+ * only for the save-file and score encryption, which the port does not have,
+ * and they cost 106 bytes of resident data.  release stays, but it has to
+ * live here rather than in a banked module -- the 'v' command formats it from
+ * bank 0, so a pointer into another bank's read-only data would be read while
+ * that bank is paged out.
+ */
+char *release = "5.4.4";
+#else
 char file_name[MAXSTR];			/* Save file name */
 #endif
 char huh[MAXSTR];			/* The last message printed */
